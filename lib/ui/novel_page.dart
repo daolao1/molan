@@ -80,7 +80,7 @@ class _NovelPageState extends State<NovelPage>
     }
     setState(() => _bulkGenerating = true);
     try {
-      final settings = await SettingsStore.load();
+      final settings = await SettingsStore.loadFor(LlmPurpose.lore);
       final all = await widget.db.allEntriesOf(widget.novel.id);
       final rels = await widget.db.relationsOfNovel(widget.novel.id);
       final links = await widget.db.linksOfNovel(widget.novel.id);

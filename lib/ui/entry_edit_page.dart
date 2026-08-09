@@ -178,7 +178,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
     }
     setState(() => _generating = true);
     try {
-      final settings = await SettingsStore.load();
+      final settings = await SettingsStore.loadFor(LlmPurpose.lore);
       final all = await widget.db.allEntriesOf(widget.novel.id);
       final rels = await widget.db.relationsOfNovel(widget.novel.id);
       final links = await widget.db.linksOfNovel(widget.novel.id);

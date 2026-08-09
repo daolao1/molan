@@ -10,58 +10,60 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
+class _ProfileCtrls {
+  final baseUrl = TextEditingController();
+  final apiKey = TextEditingController();
+  final model = TextEditingController();
+  String provider = 'deepseek';
+  bool showKey = false;
+  bool enabled = false;
+
+  LlmSettings toSettings() => LlmSettings(
+        provider: provider,
+        baseUrl: baseUrl.text.trim(),
+        apiKey: apiKey.text.trim(),
+        model: model.text.trim(),
+      );
+
+  void fill(LlmSettings s) {
+    provider = s.provider;
+    baseUrl.text = s.baseUrl;
+    apiKey.text = s.apiKey;
+    model.text = s.model;
+  }
+
+  void dispose() {
+    baseUrl.dispose();
+    apiKey.dispose();
+    model.dispose();
+  }
+}
+
 class _SettingsPageState extends State<SettingsPage> {
-  final _baseUrlCtrl = TextEditingController();
-  final _apiKeyCtrl = TextEditingController();
-  final _modelCtrl = TextEditingController();
-  String _provider = 'deepseek';
-  bool _showKey = false;
+  final _ctrls = {for (final p in LlmPurpose.values) p: _ProfileCtrls()};
   bool _loaded = false;
   bool _busy = false;
-
-  LlmPreset get _preset =>
-      llmPresets.firstWhere((p) => p.id == _provider,
-          orElse: () => llmPresets.last);
-
-  LlmSettings get _current => LlmSettings(
-        provider: _provider,
-        baseUrl: _baseUrlCtrl.text.trim(),
-        apiKey: _apiKeyCtrl.text.trim(),
-        model: _modelCtrl.text.trim(),
-      );
 
   @override
   void initState() {
     super.initState();
-    SettingsStore.load().then((s) {
-      if (!mounted) return;
-      setState(() {
-        _provider = s.provider;
-        _baseUrlCtrl.text = s.baseUrl;
-        _apiKeyCtrl.text = s.apiKey;
-        _modelCtrl.text = s.model;
-        _loaded = true;
-      });
-    });
+    _load();
+  }
+
+  Future<void> _load() async {
+    for (final p in LlmPurpose.values) {
+      _ctrls[p]!.fill(await SettingsStore.loadProfile(p));
+      _ctrls[p]!.enabled = await SettingsStore.profileEnabled(p);
+    }
+    if (mounted) setState(() => _loaded = true);
   }
 
   @override
   void dispose() {
-    _baseUrlCtrl.dispose();
-    _apiKeyCtrl.dispose();
-    _modelCtrl.dispose();
+    for (final c in _ctrls.values) {
+      c.dispose();
+    }
     super.dispose();
-  }
-
-  void _applyPreset(String id) {
-    final preset = llmPresets.firstWhere((p) => p.id == id);
-    setState(() {
-      _provider = id;
-      if (preset.baseUrl.isNotEmpty) _baseUrlCtrl.text = preset.baseUrl;
-      if (preset.defaultModel.isNotEmpty) {
-        _modelCtrl.text = preset.defaultModel;
-      }
-    });
   }
 
   void _toast(String msg, {bool error = false}) {
@@ -70,8 +72,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ..clearSnackBars()
       ..showSnackBar(SnackBar(
         content: Text(msg),
-        backgroundColor:
-            error ? Theme.of(context).colorScheme.error : null,
+        backgroundColor: error ? Theme.of(context).colorScheme.error : null,
         duration: Duration(seconds: error ? 6 : 3),
       ));
   }
@@ -82,16 +83,18 @@ class _SettingsPageState extends State<SettingsPage> {
       await task();
     } on LlmException catch (e) {
       _toast(e.message, error: true);
+    } catch (e) {
+      _toast('失败：$e', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _pickModel() => _run(() async {
-        final models = await LlmClient.fetchModels(_current);
+  Future<void> _pickModel(_ProfileCtrls c) => _run(() async {
+        final models = await LlmClient.fetchModels(c.toSettings());
         if (!mounted) return;
         final picked = await _showModelPicker(models);
-        if (picked != null) setState(() => _modelCtrl.text = picked);
+        if (picked != null) setState(() => c.model.text = picked);
       });
 
   Future<String?> _showModelPicker(List<String> models) {
@@ -109,7 +112,6 @@ class _SettingsPageState extends State<SettingsPage> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: TextField(
-                  autofocus: false,
                   decoration: InputDecoration(
                       hintText: '筛选 ${models.length} 个模型…',
                       prefixIcon: const Icon(Icons.search),
@@ -133,18 +135,123 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _test() => _run(() async {
-        final ms = await LlmClient.testChat(_current);
+  Future<void> _test(_ProfileCtrls c) => _run(() async {
+        final ms = await LlmClient.testChat(c.toSettings());
         _toast('连接成功,模型响应正常(${ms}ms)');
       });
 
   Future<void> _save() async {
-    if (_baseUrlCtrl.text.trim().isEmpty) {
-      _toast('Base URL 不能为空', error: true);
+    if (_ctrls[LlmPurpose.main]!.baseUrl.text.trim().isEmpty) {
+      _toast('主 API 的 Base URL 不能为空', error: true);
       return;
     }
-    await SettingsStore.save(_current);
+    for (final p in LlmPurpose.values) {
+      await SettingsStore.saveProfile(p, _ctrls[p]!.toSettings());
+      if (p != LlmPurpose.main) {
+        await SettingsStore.setProfileEnabled(p, _ctrls[p]!.enabled);
+      }
+    }
     _toast('已保存');
+  }
+
+  List<Widget> _profileForm(_ProfileCtrls c) {
+    final preset = llmPresets.firstWhere((p) => p.id == c.provider,
+        orElse: () => llmPresets.last);
+    return [
+      DropdownButtonFormField<String>(
+        initialValue:
+            llmPresets.any((p) => p.id == c.provider) ? c.provider : 'custom',
+        decoration: const InputDecoration(
+            labelText: '服务商', border: OutlineInputBorder()),
+        items: [
+          for (final p in llmPresets)
+            DropdownMenuItem(value: p.id, child: Text(p.name)),
+        ],
+        onChanged: (v) {
+          if (v == null) return;
+          final preset = llmPresets.firstWhere((p) => p.id == v);
+          setState(() {
+            c.provider = v;
+            if (preset.baseUrl.isNotEmpty) c.baseUrl.text = preset.baseUrl;
+            if (preset.defaultModel.isNotEmpty) {
+              c.model.text = preset.defaultModel;
+            }
+          });
+        },
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: c.baseUrl,
+        decoration: const InputDecoration(
+            labelText: 'Base URL', border: OutlineInputBorder()),
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: c.apiKey,
+        obscureText: !c.showKey,
+        decoration: InputDecoration(
+          labelText: 'API Key',
+          helperText: !preset.needsKey
+              ? '本机服务无需 Key'
+              : preset.keyUrl != null
+                  ? '在 ${preset.keyUrl} 创建'
+                  : null,
+          border: const OutlineInputBorder(),
+          suffixIcon: IconButton(
+            icon: Icon(c.showKey
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined),
+            onPressed: () => setState(() => c.showKey = !c.showKey),
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: c.model,
+        decoration: InputDecoration(
+          labelText: '模型',
+          border: const OutlineInputBorder(),
+          suffixIcon: IconButton(
+            icon: const Icon(Icons.list_alt_outlined),
+            tooltip: '从服务商获取模型列表',
+            onPressed: _busy ? null : () => _pickModel(c),
+          ),
+        ),
+      ),
+      const SizedBox(height: 8),
+      Align(
+        alignment: Alignment.centerRight,
+        child: OutlinedButton.icon(
+          onPressed: _busy ? null : () => _test(c),
+          icon: const Icon(Icons.bolt_outlined, size: 18),
+          label: const Text('测试连接'),
+        ),
+      ),
+    ];
+  }
+
+  Widget _subProfileCard(LlmPurpose purpose, String subtitle) {
+    final c = _ctrls[purpose]!;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('单独配置${purpose.label}'),
+              subtitle: Text(c.enabled ? subtitle : '关闭时使用主 API'),
+              value: c.enabled,
+              onChanged: (v) => setState(() => c.enabled = v),
+            ),
+            if (c.enabled) ...[
+              const SizedBox(height: 4),
+              ..._profileForm(c),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -156,89 +263,31 @@ class _SettingsPageState extends State<SettingsPage> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Text('LLM API', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: llmPresets.any((p) => p.id == _provider)
-                      ? _provider
-                      : 'custom',
-                  decoration: const InputDecoration(
-                      labelText: '服务商', border: OutlineInputBorder()),
-                  items: [
-                    for (final p in llmPresets)
-                      DropdownMenuItem(value: p.id, child: Text(p.name)),
-                  ],
-                  onChanged: (v) => v == null ? null : _applyPreset(v),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _baseUrlCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Base URL',
-                    hintText: 'https://api.deepseek.com/v1',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _apiKeyCtrl,
-                  obscureText: !_showKey,
-                  decoration: InputDecoration(
-                    labelText: 'API Key',
-                    helperText: !_preset.needsKey
-                        ? '本机服务无需 Key'
-                        : _preset.keyUrl != null
-                            ? '在 ${_preset.keyUrl} 创建'
-                            : null,
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      icon: Icon(_showKey
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined),
-                      tooltip: _showKey ? '隐藏' : '显示',
-                      onPressed: () => setState(() => _showKey = !_showKey),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('主 API(默认所有功能使用)',
+                            style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 12),
+                        ..._profileForm(_ctrls[LlmPurpose.main]!),
+                      ],
                     ),
                   ),
                 ),
+                const SizedBox(height: 8),
+                _subProfileCard(LlmPurpose.lore, '设定卡与世界观生成使用此配置'),
+                const SizedBox(height: 8),
+                _subProfileCard(LlmPurpose.writing, '大纲与正文生成使用此配置'),
                 const SizedBox(height: 16),
-                TextField(
-                  controller: _modelCtrl,
-                  decoration: InputDecoration(
-                    labelText: '模型',
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.list_alt_outlined),
-                      tooltip: '从服务商获取模型列表',
-                      onPressed: _busy ? null : _pickModel,
-                    ),
-                  ),
+                FilledButton.icon(
+                  onPressed: _save,
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('保存全部'),
                 ),
                 const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _busy ? null : _test,
-                        icon: _busy
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.bolt_outlined),
-                        label: const Text('测试连接'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _busy ? null : _save,
-                        icon: const Icon(Icons.save_outlined),
-                        label: const Text('保存'),
-                      ),
-                    ),
-                  ],
-                ),
               ],
             ),
     );

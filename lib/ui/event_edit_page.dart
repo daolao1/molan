@@ -73,7 +73,7 @@ class _EventEditPageState extends State<EventEditPage> {
     List<CharacterRelation> rels,
     List<EntryLink> links
   })> _loadContext() async {
-    final settings = await SettingsStore.load();
+    final settings = await SettingsStore.loadFor(LlmPurpose.writing);
     final all = await widget.db.allEntriesOf(widget.novel.id);
     final rels = await widget.db.relationsOfNovel(widget.novel.id);
     final links = await widget.db.linksOfNovel(widget.novel.id);

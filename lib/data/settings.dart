@@ -46,28 +46,64 @@ class LlmSettings {
   final String model;
 }
 
-class SettingsStore {
-  static const _kProvider = 'llm_provider';
-  static const _kBaseUrl = 'llm_base_url';
-  static const _kApiKey = 'llm_api_key';
-  static const _kModel = 'llm_model';
+/// LLM 配置组用途:主 API 兜底,子 API 按功能域覆盖
+enum LlmPurpose {
+  main('llm', '主 API'),
+  lore('llm_lore', '设定 API'),
+  writing('llm_writing', '写作 API');
 
-  static Future<LlmSettings> load() async {
-    final p = await SharedPreferences.getInstance();
+  const LlmPurpose(this.prefix, this.label);
+  final String prefix;
+  final String label;
+}
+
+class SettingsStore {
+  static LlmSettings _read(SharedPreferences p, String prefix) {
     const def = LlmSettings();
     return LlmSettings(
-      provider: p.getString(_kProvider) ?? def.provider,
-      baseUrl: p.getString(_kBaseUrl) ?? def.baseUrl,
-      apiKey: p.getString(_kApiKey) ?? def.apiKey,
-      model: p.getString(_kModel) ?? def.model,
+      provider: p.getString('${prefix}_provider') ?? def.provider,
+      baseUrl: p.getString('${prefix}_base_url') ?? def.baseUrl,
+      apiKey: p.getString('${prefix}_api_key') ?? def.apiKey,
+      model: p.getString('${prefix}_model') ?? def.model,
     );
   }
 
-  static Future<void> save(LlmSettings s) async {
+  /// 读取某组的原始配置(不回退)
+  static Future<LlmSettings> loadProfile(LlmPurpose purpose) async {
     final p = await SharedPreferences.getInstance();
-    await p.setString(_kProvider, s.provider);
-    await p.setString(_kBaseUrl, s.baseUrl);
-    await p.setString(_kApiKey, s.apiKey);
-    await p.setString(_kModel, s.model);
+    return _read(p, purpose.prefix);
   }
+
+  /// 子 API 是否启用(主 API 恒启用)
+  static Future<bool> profileEnabled(LlmPurpose purpose) async {
+    if (purpose == LlmPurpose.main) return true;
+    final p = await SharedPreferences.getInstance();
+    return p.getBool('${purpose.prefix}_enabled') ?? false;
+  }
+
+  /// 按用途取生效配置:子 API 未启用时回退主 API
+  static Future<LlmSettings> loadFor(LlmPurpose purpose) async {
+    final p = await SharedPreferences.getInstance();
+    if (purpose != LlmPurpose.main &&
+        (p.getBool('${purpose.prefix}_enabled') ?? false)) {
+      return _read(p, purpose.prefix);
+    }
+    return _read(p, LlmPurpose.main.prefix);
+  }
+
+  static Future<void> saveProfile(LlmPurpose purpose, LlmSettings s) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString('${purpose.prefix}_provider', s.provider);
+    await p.setString('${purpose.prefix}_base_url', s.baseUrl);
+    await p.setString('${purpose.prefix}_api_key', s.apiKey);
+    await p.setString('${purpose.prefix}_model', s.model);
+  }
+
+  static Future<void> setProfileEnabled(LlmPurpose purpose, bool v) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('${purpose.prefix}_enabled', v);
+  }
+
+  /// 兼容旧调用:主 API
+  static Future<LlmSettings> load() => loadFor(LlmPurpose.main);
 }
