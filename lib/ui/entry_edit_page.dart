@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/db.dart';
 import '../data/entry_fields.dart';
 import '../data/llm_client.dart';
+import '../data/novel_tools.dart';
 import '../data/prompts.dart';
 import '../data/settings.dart';
 
@@ -96,21 +97,37 @@ class _EntryEditPageState extends State<EntryEditPage> {
       // 卡片已有内容时走增量模式:只让模型返回需新增/修改的字段
       final incremental = _nameCtrl.text.trim().isNotEmpty ||
           _fieldCtrls.values.any((c) => c.text.trim().isNotEmpty);
-      final reply = await LlmClient.chat(
-        settings,
-        system: entryGenerationSystem(widget.kind, incremental: incremental),
-        user: entryGenerationUser(
-          novel: widget.novel,
-          kind: widget.kind,
-          allEntries: all,
-          relations: rels,
-          currentName: _nameCtrl.text,
-          currentData: {
-            for (final e in _fieldCtrls.entries) e.key: e.value.text
-          },
-          request: request,
-        ),
+      final userMsg = entryGenerationUser(
+        novel: widget.novel,
+        kind: widget.kind,
+        allEntries: all,
+        relations: rels,
+        currentName: _nameCtrl.text,
+        currentData: {
+          for (final e in _fieldCtrls.entries) e.key: e.value.text
+        },
+        request: request,
       );
+      String reply;
+      try {
+        // Agentic 检索:模型可自主调工具查详情;不支持则回退全量注入
+        final executor = NovelToolExecutor(widget.db, widget.novel.id);
+        reply = await LlmClient.chatWithTools(
+          settings,
+          system: entryGenerationSystem(widget.kind,
+              incremental: incremental, withTools: true),
+          user: userMsg,
+          tools: novelToolSchemas,
+          onToolCall: executor.call,
+        );
+      } on ToolsUnsupportedException {
+        reply = await LlmClient.chat(
+          settings,
+          system:
+              entryGenerationSystem(widget.kind, incremental: incremental),
+          user: userMsg,
+        );
+      }
       final data = LlmClient.parseJsonReply(reply);
       if (!mounted) return;
       setState(() {

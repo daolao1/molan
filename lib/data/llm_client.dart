@@ -13,6 +13,11 @@ class LlmException implements Exception {
   String toString() => message;
 }
 
+/// 服务不支持 function calling 时抛出,调用方应回退普通对话
+class ToolsUnsupportedException extends LlmException {
+  ToolsUnsupportedException(super.message);
+}
+
 class LlmClient {
   static const _timeout = Duration(seconds: 20);
 
@@ -116,7 +121,85 @@ class LlmClient {
     }
   }
 
-  /// 从模型回复中提取 JSON 对象(容忍代码围栏与前后缀文本)
+  /// 带 function calling 的对话循环:模型可调用工具检索信息后再作答。
+  /// 服务不支持 tools 时抛 [ToolsUnsupportedException],调用方可回退 [chat]。
+  static Future<String> chatWithTools(
+    LlmSettings s, {
+    required String system,
+    required String user,
+    required List<Map<String, dynamic>> tools,
+    required Future<String> Function(String name, Map<String, dynamic> args)
+        onToolCall,
+    int maxRounds = 6,
+  }) async {
+    if (s.model.trim().isEmpty) {
+      throw LlmException('请先在设置中配置 LLM API 与模型');
+    }
+    final messages = <Map<String, dynamic>>[
+      {'role': 'system', 'content': system},
+      {'role': 'user', 'content': user},
+    ];
+    try {
+      for (var round = 0; round < maxRounds; round++) {
+        final resp = await http
+            .post(Uri.parse('${_base(s)}/chat/completions'),
+                headers: _headers(s),
+                body: jsonEncode({
+                  'model': s.model.trim(),
+                  'messages': messages,
+                  'tools': tools,
+                }))
+            .timeout(const Duration(seconds: 120));
+        if (resp.statusCode == 400 || resp.statusCode == 404) {
+          throw ToolsUnsupportedException(_errorText(resp));
+        }
+        if (resp.statusCode != 200) {
+          throw LlmException('HTTP ${resp.statusCode}：${_errorText(resp)}');
+        }
+        final data = jsonDecode(utf8.decode(resp.bodyBytes));
+        final msg = data['choices']?[0]?['message'] as Map<String, dynamic>?;
+        if (msg == null) throw LlmException('模型返回格式异常');
+        final toolCalls = msg['tool_calls'] as List?;
+        if (toolCalls == null || toolCalls.isEmpty) {
+          final content = msg['content'] as String?;
+          if (content == null || content.trim().isEmpty) {
+            throw LlmException('模型返回了空内容');
+          }
+          return content;
+        }
+        messages.add(msg);
+        for (final tc in toolCalls) {
+          final fn = tc['function'] as Map<String, dynamic>? ?? {};
+          final name = fn['name'] as String? ?? '';
+          Map<String, dynamic> args;
+          try {
+            final raw = fn['arguments'] as String? ?? '{}';
+            args = raw.trim().isEmpty
+                ? {}
+                : (jsonDecode(raw) as Map).cast<String, dynamic>();
+          } catch (_) {
+            args = {};
+          }
+          String result;
+          try {
+            result = await onToolCall(name, args);
+          } catch (e) {
+            result = '工具执行失败：$e';
+          }
+          messages.add({
+            'role': 'tool',
+            'tool_call_id': tc['id'] ?? '',
+            'content': result,
+          });
+        }
+      }
+      throw LlmException('工具调用轮次超限,请重试');
+    } on ToolsUnsupportedException {
+      rethrow;
+    } catch (e) {
+      _fail(e);
+    }
+  }
   static Map<String, String> parseJsonReply(String text) {
     final t = text.trim();
     final start = t.indexOf('{');
