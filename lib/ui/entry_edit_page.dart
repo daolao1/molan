@@ -39,6 +39,13 @@ class _EntryEditPageState extends State<EntryEditPage> {
       ? GenerationMode.generate
       : GenerationMode.supplement;
 
+  /// 生成前快照;非 null 表示等待接受/拒绝
+  ({
+    String name,
+    Map<String, String> fields,
+    List<({int toId, String label})> relations
+  })? _snapshot;
+
   // 人物关系(仅 character):内存暂存,保存时同步入库
   List<Entry> _allCharacters = const [];
   final List<({int toId, String label})> _relations = [];
@@ -144,8 +151,15 @@ class _EntryEditPageState extends State<EntryEditPage> {
         return v == null || v is List || v is Map ? null : v.toString();
       }
 
+      // 先存快照供拒绝时回滚
+      final snapshot = (
+        name: _nameCtrl.text,
+        fields: {for (final e in _fieldCtrls.entries) e.key: e.value.text},
+        relations: List.of(_relations),
+      );
       var addedRels = 0;
       setState(() {
+        _snapshot = snapshot;
         final name = textOf('name') ?? '';
         if (name.isNotEmpty) _nameCtrl.text = name;
         for (final f in _fields) {
@@ -177,8 +191,8 @@ class _EntryEditPageState extends State<EntryEditPage> {
         _dirty = true;
       });
       _toast(addedRels > 0
-          ? '已生成(含 $addedRels 条人物关系),请检查并保存'
-          : '已生成,请检查各字段并保存');
+          ? '已生成(含 $addedRels 条人物关系),请检查后接受或拒绝'
+          : '已生成,请检查后接受或拒绝');
     } on LlmException catch (e) {
       _toast(e.message, error: true);
     } finally {
@@ -241,6 +255,27 @@ class _EntryEditPageState extends State<EntryEditPage> {
         _dirty = true;
       });
     }
+  }
+
+  void _acceptGeneration() {
+    setState(() => _snapshot = null);
+    _toast('已接受,记得保存');
+  }
+
+  void _rejectGeneration() {
+    final s = _snapshot;
+    if (s == null) return;
+    setState(() {
+      _nameCtrl.text = s.name;
+      for (final e in s.fields.entries) {
+        _fieldCtrls[e.key]?.text = e.value;
+      }
+      _relations
+        ..clear()
+        ..addAll(s.relations);
+      _snapshot = null;
+    });
+    _toast('已恢复生成前的内容');
   }
 
   void _toast(String msg, {bool error = false}) {
@@ -349,39 +384,58 @@ class _EntryEditPageState extends State<EntryEditPage> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        SegmentedButton<GenerationMode>(
-                          segments: [
-                            for (final m in GenerationMode.values)
-                              ButtonSegment(
-                                  value: m,
-                                  label: Text(m.label),
-                                  tooltip: m == GenerationMode.generate
-                                      ? '自由发挥,填满整张卡片'
-                                      : '只写你提到的内容,其他字段不动'),
-                          ],
-                          selected: {_genMode},
-                          showSelectedIcon: false,
-                          onSelectionChanged: (s) =>
-                              setState(() => _genMode = s.first),
-                        ),
-                        const Spacer(),
-                        FilledButton.tonalIcon(
-                          onPressed: _generating ? null : _generate,
-                          icon: _generating
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2))
-                              : const Icon(Icons.auto_awesome),
-                          label: Text(_generating
-                              ? '生成中…'
-                              : '${_genMode.label}并填入'),
-                        ),
-                      ],
-                    ),
+                    if (_snapshot != null)
+                      Row(
+                        children: [
+                          const Expanded(
+                              child: Text('对生成结果满意吗？拒绝将恢复之前内容')),
+                          OutlinedButton.icon(
+                            onPressed: _rejectGeneration,
+                            icon: const Icon(Icons.close, size: 18),
+                            label: const Text('拒绝'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton.icon(
+                            onPressed: _acceptGeneration,
+                            icon: const Icon(Icons.check, size: 18),
+                            label: const Text('接受'),
+                          ),
+                        ],
+                      )
+                    else
+                      Row(
+                        children: [
+                          SegmentedButton<GenerationMode>(
+                            segments: [
+                              for (final m in GenerationMode.values)
+                                ButtonSegment(
+                                    value: m,
+                                    label: Text(m.label),
+                                    tooltip: m == GenerationMode.generate
+                                        ? '自由发挥,填满整张卡片'
+                                        : '只写你提到的内容,其他字段不动'),
+                            ],
+                            selected: {_genMode},
+                            showSelectedIcon: false,
+                            onSelectionChanged: (s) =>
+                                setState(() => _genMode = s.first),
+                          ),
+                          const Spacer(),
+                          FilledButton.tonalIcon(
+                            onPressed: _generating ? null : _generate,
+                            icon: _generating
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2))
+                                : const Icon(Icons.auto_awesome),
+                            label: Text(_generating
+                                ? '生成中…'
+                                : '${_genMode.label}并填入'),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),
