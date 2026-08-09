@@ -5,13 +5,16 @@ allprojects {
     }
 }
 
-// 老版本插件(如 file_picker 8.x)声明的 compileSdk 过低,统一抬到 36
+// 老版本插件(如 file_picker 8.x)声明的 compileSdk 过低,统一抬到 36。
+// 必须在子项目求值后覆盖(否则被其 android{} 块改回),已求值的直接改。
 subprojects {
-    plugins.withId("com.android.library") {
-        (extensions.findByName("android")
+    fun bumpCompileSdk(p: Project) {
+        (p.extensions.findByName("android")
                 as? com.android.build.gradle.BaseExtension)
             ?.compileSdkVersion(36)
     }
+    if (state.executed) bumpCompileSdk(project)
+    else afterEvaluate { bumpCompileSdk(this) }
 }
 
 val newBuildDir: Directory =
