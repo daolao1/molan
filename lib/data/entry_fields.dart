@@ -41,7 +41,6 @@ const _itemFields = [
 ];
 
 const _sceneFields = [
-  EntryField('location', '发生地点', '关联的地点'),
   EntryField('time', '时间', '故事内时间点/时长'),
   EntryField('characters', '出场人物', '在场角色及各自状态', 2),
   EntryField('purpose', '场景目的', '这场戏推动什么(情节/人物/信息)', 2),

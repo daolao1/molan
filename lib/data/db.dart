@@ -21,6 +21,11 @@ class Entries extends Table {
   TextColumn get kind => text()();
   TextColumn get name => text()();
   TextColumn get content => text().withDefault(const Constant(''))();
+
+  /// 场景所属的地点条目 id
+  IntColumn get parentId => integer()
+      .nullable()
+      .references(Entries, #id, onDelete: KeyAction.cascade)();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -59,12 +64,13 @@ class AppDatabase extends _$AppDatabase {
             ));
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onUpgrade: (m, from, to) async {
           if (from < 2) await m.createTable(characterRelations);
+          if (from < 3) await m.addColumn(entries, entries.parentId);
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
@@ -91,12 +97,22 @@ class AppDatabase extends _$AppDatabase {
           .watch();
 
   Future<int> createEntry(
-          int novelId, EntryKind kind, String name, String content) =>
+          int novelId, EntryKind kind, String name, String content,
+          {int? parentId}) =>
       into(entries).insert(EntriesCompanion.insert(
           novelId: novelId,
           kind: kind.name,
           name: name,
-          content: Value(content)));
+          content: Value(content),
+          parentId: Value(parentId)));
+
+  /// 某地点下的场景列表
+  Stream<List<Entry>> watchScenesOf(int locationId) => (select(entries)
+        ..where((t) =>
+            t.parentId.equals(locationId) &
+            t.kind.equals(EntryKind.scene.name))
+        ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)]))
+      .watch();
 
   /// 本小说全部条目(供 AI 生成构建上下文)
   Future<List<Entry>> allEntriesOf(int novelId) =>
@@ -150,11 +166,11 @@ class AppDatabase extends _$AppDatabase {
         }
       });
 
-  /// 导入一本小说(条目用数组索引引用关系),返回新小说 id
+  /// 导入一本小说(条目用数组索引引用关系与父级),返回新小说 id
   Future<int> importNovel(
     String title,
     String description,
-    List<({String kind, String name, String content})> entryRows,
+    List<({String kind, String name, String content, int? parent})> entryRows,
     List<({int from, int to, String label})> relRows,
   ) =>
       transaction(() async {
@@ -166,6 +182,14 @@ class AppDatabase extends _$AppDatabase {
               kind: e.kind,
               name: e.name,
               content: Value(e.content))));
+        }
+        // 二次遍历补父级,因父条目可能排在子条目之后
+        for (var i = 0; i < entryRows.length; i++) {
+          final p = entryRows[i].parent;
+          if (p != null && p >= 0 && p < ids.length && p != i) {
+            await (update(entries)..where((t) => t.id.equals(ids[i])))
+                .write(EntriesCompanion(parentId: Value(ids[p])));
+          }
         }
         for (final r in relRows) {
           if (r.from < 0 || r.from >= ids.length) continue;

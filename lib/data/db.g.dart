@@ -413,6 +413,20 @@ class $EntriesTable extends Entries with TableInfo<$EntriesTable, Entry> {
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _parentIdMeta = const VerificationMeta(
+    'parentId',
+  );
+  @override
+  late final GeneratedColumn<int> parentId = GeneratedColumn<int>(
+    'parent_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES entries (id) ON DELETE CASCADE',
+    ),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -444,6 +458,7 @@ class $EntriesTable extends Entries with TableInfo<$EntriesTable, Entry> {
     kind,
     name,
     content,
+    parentId,
     createdAt,
     updatedAt,
   ];
@@ -492,6 +507,12 @@ class $EntriesTable extends Entries with TableInfo<$EntriesTable, Entry> {
         content.isAcceptableOrUnknown(data['content']!, _contentMeta),
       );
     }
+    if (data.containsKey('parent_id')) {
+      context.handle(
+        _parentIdMeta,
+        parentId.isAcceptableOrUnknown(data['parent_id']!, _parentIdMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -533,6 +554,10 @@ class $EntriesTable extends Entries with TableInfo<$EntriesTable, Entry> {
         DriftSqlType.string,
         data['${effectivePrefix}content'],
       )!,
+      parentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}parent_id'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -556,6 +581,9 @@ class Entry extends DataClass implements Insertable<Entry> {
   final String kind;
   final String name;
   final String content;
+
+  /// 场景所属的地点条目 id
+  final int? parentId;
   final DateTime createdAt;
   final DateTime updatedAt;
   const Entry({
@@ -564,6 +592,7 @@ class Entry extends DataClass implements Insertable<Entry> {
     required this.kind,
     required this.name,
     required this.content,
+    this.parentId,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -575,6 +604,9 @@ class Entry extends DataClass implements Insertable<Entry> {
     map['kind'] = Variable<String>(kind);
     map['name'] = Variable<String>(name);
     map['content'] = Variable<String>(content);
+    if (!nullToAbsent || parentId != null) {
+      map['parent_id'] = Variable<int>(parentId);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -587,6 +619,9 @@ class Entry extends DataClass implements Insertable<Entry> {
       kind: Value(kind),
       name: Value(name),
       content: Value(content),
+      parentId: parentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentId),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -603,6 +638,7 @@ class Entry extends DataClass implements Insertable<Entry> {
       kind: serializer.fromJson<String>(json['kind']),
       name: serializer.fromJson<String>(json['name']),
       content: serializer.fromJson<String>(json['content']),
+      parentId: serializer.fromJson<int?>(json['parentId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -616,6 +652,7 @@ class Entry extends DataClass implements Insertable<Entry> {
       'kind': serializer.toJson<String>(kind),
       'name': serializer.toJson<String>(name),
       'content': serializer.toJson<String>(content),
+      'parentId': serializer.toJson<int?>(parentId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -627,6 +664,7 @@ class Entry extends DataClass implements Insertable<Entry> {
     String? kind,
     String? name,
     String? content,
+    Value<int?> parentId = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => Entry(
@@ -635,6 +673,7 @@ class Entry extends DataClass implements Insertable<Entry> {
     kind: kind ?? this.kind,
     name: name ?? this.name,
     content: content ?? this.content,
+    parentId: parentId.present ? parentId.value : this.parentId,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -645,6 +684,7 @@ class Entry extends DataClass implements Insertable<Entry> {
       kind: data.kind.present ? data.kind.value : this.kind,
       name: data.name.present ? data.name.value : this.name,
       content: data.content.present ? data.content.value : this.content,
+      parentId: data.parentId.present ? data.parentId.value : this.parentId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -658,6 +698,7 @@ class Entry extends DataClass implements Insertable<Entry> {
           ..write('kind: $kind, ')
           ..write('name: $name, ')
           ..write('content: $content, ')
+          ..write('parentId: $parentId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -665,8 +706,16 @@ class Entry extends DataClass implements Insertable<Entry> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, novelId, kind, name, content, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    novelId,
+    kind,
+    name,
+    content,
+    parentId,
+    createdAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -676,6 +725,7 @@ class Entry extends DataClass implements Insertable<Entry> {
           other.kind == this.kind &&
           other.name == this.name &&
           other.content == this.content &&
+          other.parentId == this.parentId &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -686,6 +736,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
   final Value<String> kind;
   final Value<String> name;
   final Value<String> content;
+  final Value<int?> parentId;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const EntriesCompanion({
@@ -694,6 +745,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
     this.kind = const Value.absent(),
     this.name = const Value.absent(),
     this.content = const Value.absent(),
+    this.parentId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -703,6 +755,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
     required String kind,
     required String name,
     this.content = const Value.absent(),
+    this.parentId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   }) : novelId = Value(novelId),
@@ -714,6 +767,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
     Expression<String>? kind,
     Expression<String>? name,
     Expression<String>? content,
+    Expression<int>? parentId,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -723,6 +777,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
       if (kind != null) 'kind': kind,
       if (name != null) 'name': name,
       if (content != null) 'content': content,
+      if (parentId != null) 'parent_id': parentId,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -734,6 +789,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
     Value<String>? kind,
     Value<String>? name,
     Value<String>? content,
+    Value<int?>? parentId,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -743,6 +799,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
       kind: kind ?? this.kind,
       name: name ?? this.name,
       content: content ?? this.content,
+      parentId: parentId ?? this.parentId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -766,6 +823,9 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
     if (content.present) {
       map['content'] = Variable<String>(content.value);
     }
+    if (parentId.present) {
+      map['parent_id'] = Variable<int>(parentId.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -783,6 +843,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
           ..write('kind: $kind, ')
           ..write('name: $name, ')
           ..write('content: $content, ')
+          ..write('parentId: $parentId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -1130,6 +1191,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         'entries',
         limitUpdateKind: UpdateKind.delete,
       ),
+      result: [TableUpdate('entries', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'entries',
+        limitUpdateKind: UpdateKind.delete,
+      ),
       result: [TableUpdate('character_relations', kind: UpdateKind.delete)],
     ),
     WritePropagation(
@@ -1437,6 +1505,7 @@ typedef $$EntriesTableCreateCompanionBuilder =
       required String kind,
       required String name,
       Value<String> content,
+      Value<int?> parentId,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -1447,6 +1516,7 @@ typedef $$EntriesTableUpdateCompanionBuilder =
       Value<String> kind,
       Value<String> name,
       Value<String> content,
+      Value<int?> parentId,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -1466,6 +1536,23 @@ final class $$EntriesTableReferences
       $_db.novels,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_novelIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $EntriesTable _parentIdTable(_$AppDatabase db) =>
+      db.entries.createAlias('entries__parent_id__entries__id');
+
+  $$EntriesTableProcessedTableManager? get parentId {
+    final $_column = $_itemColumn<int>('parent_id');
+    if ($_column == null) return null;
+    final manager = $$EntriesTableTableManager(
+      $_db,
+      $_db.entries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_parentIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -1526,6 +1613,29 @@ class $$EntriesTableFilterComposer
           }) => $$NovelsTableFilterComposer(
             $db: $db,
             $table: $db.novels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$EntriesTableFilterComposer get parentId {
+    final $$EntriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.parentId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableFilterComposer(
+            $db: $db,
+            $table: $db.entries,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -1597,6 +1707,29 @@ class $$EntriesTableOrderingComposer
     );
     return composer;
   }
+
+  $$EntriesTableOrderingComposer get parentId {
+    final $$EntriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.parentId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$EntriesTableAnnotationComposer
@@ -1648,6 +1781,29 @@ class $$EntriesTableAnnotationComposer
     );
     return composer;
   }
+
+  $$EntriesTableAnnotationComposer get parentId {
+    final $$EntriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.parentId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$EntriesTableTableManager
@@ -1663,7 +1819,7 @@ class $$EntriesTableTableManager
           $$EntriesTableUpdateCompanionBuilder,
           (Entry, $$EntriesTableReferences),
           Entry,
-          PrefetchHooks Function({bool novelId})
+          PrefetchHooks Function({bool novelId, bool parentId})
         > {
   $$EntriesTableTableManager(_$AppDatabase db, $EntriesTable table)
     : super(
@@ -1683,6 +1839,7 @@ class $$EntriesTableTableManager
                 Value<String> kind = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String> content = const Value.absent(),
+                Value<int?> parentId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => EntriesCompanion(
@@ -1691,6 +1848,7 @@ class $$EntriesTableTableManager
                 kind: kind,
                 name: name,
                 content: content,
+                parentId: parentId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -1701,6 +1859,7 @@ class $$EntriesTableTableManager
                 required String kind,
                 required String name,
                 Value<String> content = const Value.absent(),
+                Value<int?> parentId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => EntriesCompanion.insert(
@@ -1709,6 +1868,7 @@ class $$EntriesTableTableManager
                 kind: kind,
                 name: name,
                 content: content,
+                parentId: parentId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -1720,7 +1880,7 @@ class $$EntriesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({novelId = false}) {
+          prefetchHooksCallback: ({novelId = false, parentId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
@@ -1753,6 +1913,19 @@ class $$EntriesTableTableManager
                               )
                               as T;
                     }
+                    if (parentId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.parentId,
+                                referencedTable: $$EntriesTableReferences
+                                    ._parentIdTable(db),
+                                referencedColumn: $$EntriesTableReferences
+                                    ._parentIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
 
                     return state;
                   },
@@ -1777,7 +1950,7 @@ typedef $$EntriesTableProcessedTableManager =
       $$EntriesTableUpdateCompanionBuilder,
       (Entry, $$EntriesTableReferences),
       Entry,
-      PrefetchHooks Function({bool novelId})
+      PrefetchHooks Function({bool novelId, bool parentId})
     >;
 typedef $$CharacterRelationsTableCreateCompanionBuilder =
     CharacterRelationsCompanion Function({

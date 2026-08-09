@@ -13,12 +13,16 @@ class EntryEditPage extends StatefulWidget {
       required this.db,
       required this.novel,
       required this.kind,
-      this.entry});
+      this.entry,
+      this.parentId});
 
   final AppDatabase db;
   final Novel novel;
   final EntryKind kind;
   final Entry? entry;
+
+  /// 场景所属地点的条目 id
+  final int? parentId;
 
   @override
   State<EntryEditPage> createState() => _EntryEditPageState();
@@ -107,6 +111,12 @@ class _EntryEditPageState extends State<EntryEditPage> {
           for (final e in _fieldCtrls.entries) e.key: e.value.text
         },
         request: request,
+        parentLocation: widget.parentId == null
+            ? null
+            : all
+                .where((e) => e.id == widget.parentId)
+                .map((e) => e.name)
+                .firstOrNull,
       );
       String reply;
       try {
@@ -254,8 +264,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
         {for (final e in _fieldCtrls.entries) e.key: e.value.text});
     int entryId;
     if (widget.entry == null) {
-      entryId = await widget.db
-          .createEntry(widget.novel.id, widget.kind, name, content);
+      entryId = await widget.db.createEntry(
+          widget.novel.id, widget.kind, name, content,
+          parentId: widget.parentId);
     } else {
       entryId = widget.entry!.id;
       await widget.db.updateEntry(entryId, name, content);
@@ -451,6 +462,86 @@ class _EntryEditPageState extends State<EntryEditPage> {
                               '${_charName(r.fromEntryId)} 的「${r.label}」'),
                           subtitle: const Text('由对方添加,在对方卡片中管理'),
                         ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            if (widget.kind == EntryKind.location && widget.entry != null) ...[
+              const SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text('本地点的场景',
+                                style:
+                                    Theme.of(context).textTheme.titleSmall),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => EntryEditPage(
+                                  db: widget.db,
+                                  novel: widget.novel,
+                                  kind: EntryKind.scene,
+                                  parentId: widget.entry!.id,
+                                ),
+                              ),
+                            ),
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('添加场景'),
+                          ),
+                        ],
+                      ),
+                      StreamBuilder<List<Entry>>(
+                        stream: widget.db.watchScenesOf(widget.entry!.id),
+                        builder: (context, snapshot) {
+                          final scenes = snapshot.data ?? const [];
+                          if (scenes.isEmpty) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: Text('还没有场景,点右上角添加'),
+                            );
+                          }
+                          return Column(
+                            children: [
+                              for (final s in scenes)
+                                ListTile(
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Icon(EntryKind.scene.icon,
+                                      size: 18),
+                                  title: Text(s.name),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.delete_outline,
+                                        size: 20),
+                                    tooltip: '删除',
+                                    onPressed: () =>
+                                        widget.db.deleteEntry(s.id),
+                                  ),
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => EntryEditPage(
+                                        db: widget.db,
+                                        novel: widget.novel,
+                                        kind: EntryKind.scene,
+                                        entry: s,
+                                        parentId: widget.entry!.id,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),

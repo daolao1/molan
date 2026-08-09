@@ -80,6 +80,10 @@ class NovelToolExecutor {
     final kind = EntryKind.values.byName(e.kind);
     final data = parseEntryContent(e.content);
     final buf = StringBuffer('${kind.label}「${e.name}」:\n');
+    if (e.parentId != null) {
+      final parent = all.where((x) => x.id == e.parentId).firstOrNull;
+      if (parent != null) buf.writeln('所属地点:${parent.name}');
+    }
     for (final f in entryFieldsFor(kind)) {
       final v = data[f.key]?.trim() ?? '';
       if (v.isNotEmpty) buf.writeln('${f.label}:$v');

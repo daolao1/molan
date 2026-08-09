@@ -16,7 +16,8 @@ class NovelPage extends StatefulWidget {
 
 class _NovelPageState extends State<NovelPage>
     with SingleTickerProviderStateMixin {
-  static const _kinds = EntryKind.values;
+  // 场景挂在地点下,不作为顶层 tab
+  static const _kinds = [EntryKind.character, EntryKind.location, EntryKind.item];
   late final TabController _tab =
       TabController(length: _kinds.length, vsync: this);
 

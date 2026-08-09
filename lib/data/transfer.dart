@@ -21,7 +21,13 @@ class NovelTransfer {
       'novel': {'title': novel.title, 'description': novel.description},
       'entries': [
         for (final e in entries)
-          {'kind': e.kind, 'name': e.name, 'content': e.content}
+          {
+            'kind': e.kind,
+            'name': e.name,
+            'content': e.content,
+            if (e.parentId != null && indexOf.containsKey(e.parentId))
+              'parent': indexOf[e.parentId],
+          }
       ],
       'relations': [
         for (final r in rels)
@@ -79,6 +85,7 @@ class NovelTransfer {
             kind: e['kind'] as String? ?? 'character',
             name: e['name'] as String,
             content: e['content'] as String? ?? '',
+            parent: e['parent'] is int ? e['parent'] as int : null,
           )
     ];
     final relRows = [

@@ -25,13 +25,13 @@ void main() {
 
     expect(find.text('测试之书'), findsOneWidget);
 
-    // 进入小说页,四个分类 Tab 存在
+    // 进入小说页,场景不再是顶层 Tab
     await tester.tap(find.text('测试之书'));
     await tester.pumpAndSettle();
     expect(find.text('人物'), findsOneWidget);
     expect(find.text('地点'), findsOneWidget);
     expect(find.text('物品'), findsOneWidget);
-    expect(find.text('场景'), findsOneWidget);
+    expect(find.text('场景'), findsNothing);
 
     // 新建人物
     await tester.tap(find.text('新建人物'));

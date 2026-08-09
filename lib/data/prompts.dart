@@ -76,7 +76,8 @@ String _novelContext(
     buf.writeln('【已有${kind.label}】(${list.length}个)');
     for (final e in list.take(_maxEntriesPerKind)) {
       final brief = entryBrief(e);
-      buf.writeln('- ${e.name}${brief.isEmpty ? '' : ':$brief'}');
+      final parent = e.parentId == null ? '' : '(属于:${nameOf[e.parentId]})';
+      buf.writeln('- ${e.name}$parent${brief.isEmpty ? '' : ':$brief'}');
     }
     if (list.length > _maxEntriesPerKind) {
       buf.writeln(
@@ -105,6 +106,7 @@ String entryGenerationUser({
   required String currentName,
   required Map<String, String> currentData,
   required String request,
+  String? parentLocation,
 }) {
   final fields = entryFieldsFor(kind);
   final filled = [
@@ -113,10 +115,13 @@ String entryGenerationUser({
       if ((currentData[f.key] ?? '').trim().isNotEmpty)
         '${f.label}:${currentData[f.key]!.trim()}',
   ];
+  final creating = parentLocation == null
+      ? kind.label
+      : '${kind.label}(属于地点:$parentLocation)';
   return '''
 【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
 ${_novelContext(allEntries, relations)}
-【正在创建】${kind.label}
+【正在创建】$creating
 【已填写的字段】${filled.isEmpty ? '(无)' : '\n${filled.join('\n')}'}
 【生成要求】$request
 ''';
