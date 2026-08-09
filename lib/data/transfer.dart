@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 
 import 'db.dart';
-import 'save_file_stub.dart' if (dart.library.io) 'save_file_io.dart';
+import 'save_file_io.dart' if (dart.library.js_interop) 'save_file_web.dart';
 
 /// 小说导出/导入(JSON 文件)
 class NovelTransfer {
@@ -65,15 +65,7 @@ class NovelTransfer {
   static Future<bool> exportToFile(AppDatabase db, Novel novel) async {
     final bytes =
         Uint8List.fromList(utf8.encode(await exportJson(db, novel)));
-    final path = await FilePicker.platform.saveFile(
-      fileName: 'molan-${novel.title}.json',
-      type: FileType.custom,
-      allowedExtensions: ['json'],
-      bytes: bytes,
-    );
-    if (path == null) return false;
-    await maybeWriteFile(path, bytes);
-    return true;
+    return saveJsonPlatform('molan-${novel.title}.json', bytes);
   }
 
   /// 从文件导入,返回导入的小说标题;用户取消返回 null
