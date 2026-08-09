@@ -51,6 +51,10 @@ class _EntryEditPageState extends State<EntryEditPage> {
   final List<({int toId, String label})> _relations = [];
   List<CharacterRelation> _incoming = const [];
 
+  // 设定关联(仅 lore):内存暂存,保存时同步入库
+  List<Entry> _allEntries = const [];
+  final List<int> _links = [];
+
   @override
   void initState() {
     super.initState();
@@ -60,6 +64,75 @@ class _EntryEditPageState extends State<EntryEditPage> {
         f.key: TextEditingController(text: data[f.key] ?? '')
     };
     if (widget.kind == EntryKind.character) _loadRelations();
+    if (widget.kind == EntryKind.lore) _loadLinks();
+  }
+
+  Future<void> _loadLinks() async {
+    final all = await widget.db.allEntriesOf(widget.novel.id);
+    final links = widget.entry == null
+        ? <EntryLink>[]
+        : await widget.db.linksFrom(widget.entry!.id);
+    if (!mounted) return;
+    setState(() {
+      _allEntries = all;
+      _links
+        ..clear()
+        ..addAll([for (final l in links) l.toEntryId]);
+    });
+  }
+
+  Entry? _entryById(int id) {
+    for (final e in _allEntries) {
+      if (e.id == id) return e;
+    }
+    return null;
+  }
+
+  Future<void> _addLink() async {
+    final candidates = [
+      for (final e in _allEntries)
+        if (e.id != widget.entry?.id && !_links.contains(e.id)) e
+    ];
+    if (candidates.isEmpty) {
+      _toast('没有可关联的卡片了', error: true);
+      return;
+    }
+    var targetId = candidates.first.id;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('关联卡片'),
+        content: DropdownButtonFormField<int>(
+          initialValue: targetId,
+          isExpanded: true,
+          decoration: const InputDecoration(
+              labelText: '选择卡片', border: OutlineInputBorder()),
+          items: [
+            for (final e in candidates)
+              DropdownMenuItem(
+                  value: e.id,
+                  child: Text(
+                      '[${EntryKind.values.byName(e.kind).label}] ${e.name}',
+                      overflow: TextOverflow.ellipsis)),
+          ],
+          onChanged: (v) => targetId = v ?? targetId,
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('关联')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      setState(() {
+        _links.add(targetId);
+        _dirty = true;
+      });
+    }
   }
 
   Future<void> _loadRelations() async {
@@ -108,11 +181,13 @@ class _EntryEditPageState extends State<EntryEditPage> {
       final settings = await SettingsStore.load();
       final all = await widget.db.allEntriesOf(widget.novel.id);
       final rels = await widget.db.relationsOfNovel(widget.novel.id);
+      final links = await widget.db.linksOfNovel(widget.novel.id);
       final userMsg = entryGenerationUser(
         novel: widget.novel,
         kind: widget.kind,
         allEntries: all,
         relations: rels,
+        links: links,
         currentName: _nameCtrl.text,
         currentData: {
           for (final e in _fieldCtrls.entries) e.key: e.value.text
@@ -187,11 +262,28 @@ class _EntryEditPageState extends State<EntryEditPage> {
             }
           }
         }
+        // AI 返回的关联卡片(仅 lore):按名字匹配
+        final related = data['related'];
+        if (widget.kind == EntryKind.lore && related is List) {
+          for (final r in related) {
+            final name = r?.toString().trim() ?? '';
+            if (name.isEmpty) continue;
+            for (final e in _allEntries) {
+              if (e.name == name && e.id != widget.entry?.id) {
+                if (!_links.contains(e.id)) {
+                  _links.add(e.id);
+                  addedRels++;
+                }
+                break;
+              }
+            }
+          }
+        }
         _aiPromptCtrl.clear();
         _dirty = true;
       });
       _toast(addedRels > 0
-          ? '已生成(含 $addedRels 条人物关系),请检查后接受或拒绝'
+          ? '已生成(含 $addedRels 条关联),请检查后接受或拒绝'
           : '已生成,请检查后接受或拒绝');
     } on LlmException catch (e) {
       _toast(e.message, error: true);
@@ -200,7 +292,8 @@ class _EntryEditPageState extends State<EntryEditPage> {
     }
   }
 
-  Future<void> _addRelation() async {
+  /// index 为 null 时新增,否则编辑第 index 条关系
+  Future<void> _editRelation({int? index}) async {
     final others = [
       for (final c in _allCharacters)
         if (c.id != widget.entry?.id) c
@@ -209,12 +302,14 @@ class _EntryEditPageState extends State<EntryEditPage> {
       _toast('本小说还没有其他人物,先去创建吧', error: true);
       return;
     }
-    var targetId = others.first.id;
-    final labelCtrl = TextEditingController();
+    final editing = index != null ? _relations[index] : null;
+    var targetId = editing?.toId ?? others.first.id;
+    if (!others.any((c) => c.id == targetId)) targetId = others.first.id;
+    final labelCtrl = TextEditingController(text: editing?.label ?? '');
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('添加关系'),
+        title: Text(editing == null ? '添加关系' : '编辑关系'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -231,7 +326,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
             const SizedBox(height: 12),
             TextField(
               controller: labelCtrl,
-              autofocus: true,
+              autofocus: editing == null,
               decoration: const InputDecoration(
                   labelText: '关系',
                   hintText: '师徒 / 宿敌 / 青梅竹马 / 暗恋…',
@@ -245,13 +340,18 @@ class _EntryEditPageState extends State<EntryEditPage> {
               child: const Text('取消')),
           FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('添加')),
+              child: Text(editing == null ? '添加' : '保存')),
         ],
       ),
     );
     if (ok == true && labelCtrl.text.trim().isNotEmpty) {
       setState(() {
-        _relations.add((toId: targetId, label: labelCtrl.text.trim()));
+        final rel = (toId: targetId, label: labelCtrl.text.trim());
+        if (index == null) {
+          _relations.add(rel);
+        } else {
+          _relations[index] = rel;
+        }
         _dirty = true;
       });
     }
@@ -308,6 +408,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
     }
     if (widget.kind == EntryKind.character) {
       await widget.db.replaceRelationsFrom(entryId, _relations);
+    }
+    if (widget.kind == EntryKind.lore) {
+      await widget.db.replaceLinksFrom(entryId, _links);
     }
     if (mounted) Navigator.pop(context);
   }
@@ -480,7 +583,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
                                     Theme.of(context).textTheme.titleSmall),
                           ),
                           TextButton.icon(
-                            onPressed: _addRelation,
+                            onPressed: () => _editRelation(),
                             icon: const Icon(Icons.add, size: 18),
                             label: const Text('添加'),
                           ),
@@ -498,6 +601,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
                           leading: const Icon(Icons.arrow_forward, size: 18),
                           title: Text(
                               '${_relations[i].label} → ${_charName(_relations[i].toId)}'),
+                          onTap: () => _editRelation(index: i),
                           trailing: IconButton(
                             icon: const Icon(Icons.delete_outline, size: 20),
                             tooltip: '删除',
@@ -595,6 +699,56 @@ class _EntryEditPageState extends State<EntryEditPage> {
                             ],
                           );
                         },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+            if (widget.kind == EntryKind.lore) ...[
+              const SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text('关联卡片',
+                                style:
+                                    Theme.of(context).textTheme.titleSmall),
+                          ),
+                          TextButton.icon(
+                            onPressed: _addLink,
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('添加'),
+                          ),
+                        ],
+                      ),
+                      if (_links.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Text('可关联人物、地点、物品、场景或其他设定'),
+                        ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          for (final id in _links)
+                            if (_entryById(id) case final e?)
+                              InputChip(
+                                avatar: Icon(
+                                    EntryKind.values.byName(e.kind).icon,
+                                    size: 16),
+                                label: Text(e.name),
+                                onDeleted: () => setState(() {
+                                  _links.remove(id);
+                                  _dirty = true;
+                                }),
+                              ),
+                        ],
                       ),
                     ],
                   ),

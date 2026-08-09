@@ -29,7 +29,10 @@ String entryGenerationSystem(EntryKind kind,
   final relNote = kind == EntryKind.character
       ? '''
 - 可额外返回 "relations":[{"target":"人物名","label":"关系"}] 描述本人物与其他人物的关系;target 必须是【现有设定】中已存在的人物名,禁止虚构;label 用 2~6 字(如:师徒、血仇、青梅竹马);没有合适对象就不返回该 key'''
-      : '';
+      : kind == EntryKind.lore
+          ? '''
+- 可额外返回 "related":["卡片名"] 列出与本设定相关的已有卡片(人物/地点/物品/场景/设定);名字必须取自【现有设定】,禁止虚构;没有就不返回该 key'''
+          : '';
   final common = '''
 - 只输出一个 JSON 对象,禁止输出任何解释、前后缀或代码围栏
 - 可用的 key:"name"(名称)、$keys
@@ -62,11 +65,16 @@ $common
 /// 每类条目注入上下文的数量上限(防止提示词过长)
 const _maxEntriesPerKind = 15;
 
-/// 现有设定摘要:四类条目 + 人物关系网
-String _novelContext(
-    List<Entry> allEntries, List<CharacterRelation> relations) {
+/// 现有设定摘要:五类条目 + 人物关系网 + 设定关联
+String _novelContext(List<Entry> allEntries,
+    List<CharacterRelation> relations, List<EntryLink> links) {
   final buf = StringBuffer();
   final nameOf = {for (final e in allEntries) e.id: e.name};
+  final linksOf = <int, List<String>>{};
+  for (final l in links) {
+    final to = nameOf[l.toEntryId];
+    if (to != null) (linksOf[l.fromEntryId] ??= []).add(to);
+  }
   for (final kind in EntryKind.values) {
     final list = [
       for (final e in allEntries)
@@ -77,7 +85,11 @@ String _novelContext(
     for (final e in list.take(_maxEntriesPerKind)) {
       final brief = entryBrief(e);
       final parent = e.parentId == null ? '' : '(属于:${nameOf[e.parentId]})';
-      buf.writeln('- ${e.name}$parent${brief.isEmpty ? '' : ':$brief'}');
+      final linked = linksOf[e.id] == null
+          ? ''
+          : '(关联:${linksOf[e.id]!.join('、')})';
+      buf.writeln(
+          '- ${e.name}$parent$linked${brief.isEmpty ? '' : ':$brief'}');
     }
     if (list.length > _maxEntriesPerKind) {
       buf.writeln(
@@ -106,9 +118,10 @@ String loreGenerationSystem({bool withTools = false}) {
 你是资深小说设定师,负责为小说批量生成世界观设定条目。
 
 输出要求:
-- 只输出一个 JSON 数组,形如 [{"name":"条目名","detail":"条目内容"},…],禁止任何其他文字或代码围栏
+- 只输出一个 JSON 数组,形如 [{"name":"条目名","detail":"条目内容","related":["卡片名"]},…],禁止任何其他文字或代码围栏
 - 按【生成要求】拆分为若干独立条目,每条聚焦一个主题;数量以要求为准,未指明时 3~6 条
 - name 简短(2~10 字),detail 100~300 字,具体可直接用于写作
+- related 可选:列出与该条相关的已有卡片名(必须取自【现有设定】,禁止虚构)
 - 不与已有设定重名,严禁与现有设定矛盾,与已有内容互相呼应$toolNote
 - 全部用中文撰写
 ''';
@@ -119,11 +132,12 @@ String loreGenerationUser({
   required Novel novel,
   required List<Entry> allEntries,
   required List<CharacterRelation> relations,
+  required List<EntryLink> links,
   required String request,
 }) =>
     '''
 【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
-${_novelContext(allEntries, relations)}
+${_novelContext(allEntries, relations, links)}
 【生成要求】$request
 ''';
 
@@ -133,6 +147,7 @@ String entryGenerationUser({
   required EntryKind kind,
   required List<Entry> allEntries,
   required List<CharacterRelation> relations,
+  required List<EntryLink> links,
   required String currentName,
   required Map<String, String> currentData,
   required String request,
@@ -150,7 +165,7 @@ String entryGenerationUser({
       : '${kind.label}(属于地点:$parentLocation)';
   return '''
 【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
-${_novelContext(allEntries, relations)}
+${_novelContext(allEntries, relations, links)}
 【正在创建】$creating
 【已填写的字段】${filled.isEmpty ? '(无)' : '\n${filled.join('\n')}'}
 【生成要求】$request

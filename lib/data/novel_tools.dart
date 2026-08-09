@@ -84,6 +84,14 @@ class NovelToolExecutor {
       final parent = all.where((x) => x.id == e.parentId).firstOrNull;
       if (parent != null) buf.writeln('所属地点:${parent.name}');
     }
+    final links = await db.linksFrom(e.id);
+    if (links.isNotEmpty) {
+      final names = [
+        for (final l in links)
+          all.where((x) => x.id == l.toEntryId).firstOrNull?.name
+      ].whereType<String>().toList();
+      if (names.isNotEmpty) buf.writeln('关联卡片:${names.join('、')}');
+    }
     for (final f in entryFieldsFor(kind)) {
       final v = data[f.key]?.trim() ?? '';
       if (v.isNotEmpty) buf.writeln('${f.label}:$v');

@@ -40,6 +40,15 @@ class CharacterRelations extends Table {
   TextColumn get label => text()();
 }
 
+/// 通用条目关联(设定 → 任意卡片)
+class EntryLinks extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get fromEntryId =>
+      integer().references(Entries, #id, onDelete: KeyAction.cascade)();
+  IntColumn get toEntryId =>
+      integer().references(Entries, #id, onDelete: KeyAction.cascade)();
+}
+
 enum EntryKind {
   character('人物', Icons.person_outline),
   location('地点', Icons.place_outlined),
@@ -52,7 +61,7 @@ enum EntryKind {
   final IconData icon;
 }
 
-@DriftDatabase(tables: [Novels, Entries, CharacterRelations])
+@DriftDatabase(tables: [Novels, Entries, CharacterRelations, EntryLinks])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
       : super(executor ??
@@ -65,13 +74,14 @@ class AppDatabase extends _$AppDatabase {
             ));
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onUpgrade: (m, from, to) async {
           if (from < 2) await m.createTable(characterRelations);
           if (from < 3) await m.addColumn(entries, entries.parentId);
+          if (from < 4) await m.createTable(entryLinks);
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
@@ -128,6 +138,30 @@ class AppDatabase extends _$AppDatabase {
     return [for (final r in await q.get()) r.readTable(characterRelations)];
   }
 
+  // ---- 通用关联 ----
+  Future<List<EntryLink>> linksFrom(int entryId) =>
+      (select(entryLinks)..where((t) => t.fromEntryId.equals(entryId))).get();
+
+  Future<List<EntryLink>> linksOfNovel(int novelId) async {
+    final q = select(entryLinks).join([
+      innerJoin(entries, entries.id.equalsExp(entryLinks.fromEntryId))
+    ])
+      ..where(entries.novelId.equals(novelId));
+    return [for (final r in await q.get()) r.readTable(entryLinks)];
+  }
+
+  /// 重写某条目发起的全部关联
+  Future<void> replaceLinksFrom(int entryId, List<int> toIds) =>
+      transaction(() async {
+        await (delete(entryLinks)
+              ..where((t) => t.fromEntryId.equals(entryId)))
+            .go();
+        for (final toId in toIds) {
+          await into(entryLinks).insert(EntryLinksCompanion.insert(
+              fromEntryId: entryId, toEntryId: toId));
+        }
+      });
+
   Future<void> updateEntry(int id, String name, String content) =>
       (update(entries)..where((t) => t.id.equals(id))).write(EntriesCompanion(
           name: Value(name),
@@ -173,6 +207,7 @@ class AppDatabase extends _$AppDatabase {
     String description,
     List<({String kind, String name, String content, int? parent})> entryRows,
     List<({int from, int to, String label})> relRows,
+    List<({int from, int to})> linkRows,
   ) =>
       transaction(() async {
         final novelId = await createNovel(title, description);
@@ -200,6 +235,12 @@ class AppDatabase extends _$AppDatabase {
                   fromEntryId: ids[r.from],
                   toEntryId: ids[r.to],
                   label: r.label));
+        }
+        for (final l in linkRows) {
+          if (l.from < 0 || l.from >= ids.length) continue;
+          if (l.to < 0 || l.to >= ids.length) continue;
+          await into(entryLinks).insert(EntryLinksCompanion.insert(
+              fromEntryId: ids[l.from], toEntryId: ids[l.to]));
         }
         return novelId;
       });

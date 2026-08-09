@@ -98,10 +98,12 @@ class _NovelPageState extends State<NovelPage>
       final settings = await SettingsStore.load();
       final all = await widget.db.allEntriesOf(widget.novel.id);
       final rels = await widget.db.relationsOfNovel(widget.novel.id);
+      final links = await widget.db.linksOfNovel(widget.novel.id);
       final userMsg = loreGenerationUser(
           novel: widget.novel,
           allEntries: all,
           relations: rels,
+          links: links,
           request: request);
       String reply;
       try {
@@ -153,11 +155,32 @@ class _NovelPageState extends State<NovelPage>
         ),
       );
       if (accept == true) {
-        for (final it in items) {
-          await widget.db.createEntry(widget.novel.id, EntryKind.lore,
-              it.name, encodeEntryContent({'detail': it.detail}));
+        final nameToId = {for (final e in all) e.name: e.id};
+        var linked = 0;
+        for (final m in LlmClient.parseJsonArrayReply(reply)) {
+          final name = m['name']?.toString().trim() ?? '';
+          final detail = m['detail']?.toString().trim() ?? '';
+          if (name.isEmpty || detail.isEmpty) continue;
+          final id = await widget.db.createEntry(widget.novel.id,
+              EntryKind.lore, name, encodeEntryContent({'detail': detail}));
+          final related = m['related'];
+          if (related is List) {
+            final toIds = <int>[];
+            for (final r in related) {
+              final target = nameToId[r?.toString().trim()];
+              if (target != null && !toIds.contains(target)) {
+                toIds.add(target);
+                linked++;
+              }
+            }
+            if (toIds.isNotEmpty) {
+              await widget.db.replaceLinksFrom(id, toIds);
+            }
+          }
         }
-        _toast('已添加 ${items.length} 条设定');
+        _toast(linked > 0
+            ? '已添加 ${items.length} 条设定(含 $linked 条关联)'
+            : '已添加 ${items.length} 条设定');
       }
     } on LlmException catch (e) {
       _toast(e.message, error: true);

@@ -1161,6 +1161,267 @@ class CharacterRelationsCompanion extends UpdateCompanion<CharacterRelation> {
   }
 }
 
+class $EntryLinksTable extends EntryLinks
+    with TableInfo<$EntryLinksTable, EntryLink> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $EntryLinksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _fromEntryIdMeta = const VerificationMeta(
+    'fromEntryId',
+  );
+  @override
+  late final GeneratedColumn<int> fromEntryId = GeneratedColumn<int>(
+    'from_entry_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES entries (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _toEntryIdMeta = const VerificationMeta(
+    'toEntryId',
+  );
+  @override
+  late final GeneratedColumn<int> toEntryId = GeneratedColumn<int>(
+    'to_entry_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES entries (id) ON DELETE CASCADE',
+    ),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, fromEntryId, toEntryId];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'entry_links';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<EntryLink> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('from_entry_id')) {
+      context.handle(
+        _fromEntryIdMeta,
+        fromEntryId.isAcceptableOrUnknown(
+          data['from_entry_id']!,
+          _fromEntryIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_fromEntryIdMeta);
+    }
+    if (data.containsKey('to_entry_id')) {
+      context.handle(
+        _toEntryIdMeta,
+        toEntryId.isAcceptableOrUnknown(data['to_entry_id']!, _toEntryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_toEntryIdMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  EntryLink map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return EntryLink(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      fromEntryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}from_entry_id'],
+      )!,
+      toEntryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}to_entry_id'],
+      )!,
+    );
+  }
+
+  @override
+  $EntryLinksTable createAlias(String alias) {
+    return $EntryLinksTable(attachedDatabase, alias);
+  }
+}
+
+class EntryLink extends DataClass implements Insertable<EntryLink> {
+  final int id;
+  final int fromEntryId;
+  final int toEntryId;
+  const EntryLink({
+    required this.id,
+    required this.fromEntryId,
+    required this.toEntryId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['from_entry_id'] = Variable<int>(fromEntryId);
+    map['to_entry_id'] = Variable<int>(toEntryId);
+    return map;
+  }
+
+  EntryLinksCompanion toCompanion(bool nullToAbsent) {
+    return EntryLinksCompanion(
+      id: Value(id),
+      fromEntryId: Value(fromEntryId),
+      toEntryId: Value(toEntryId),
+    );
+  }
+
+  factory EntryLink.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return EntryLink(
+      id: serializer.fromJson<int>(json['id']),
+      fromEntryId: serializer.fromJson<int>(json['fromEntryId']),
+      toEntryId: serializer.fromJson<int>(json['toEntryId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'fromEntryId': serializer.toJson<int>(fromEntryId),
+      'toEntryId': serializer.toJson<int>(toEntryId),
+    };
+  }
+
+  EntryLink copyWith({int? id, int? fromEntryId, int? toEntryId}) => EntryLink(
+    id: id ?? this.id,
+    fromEntryId: fromEntryId ?? this.fromEntryId,
+    toEntryId: toEntryId ?? this.toEntryId,
+  );
+  EntryLink copyWithCompanion(EntryLinksCompanion data) {
+    return EntryLink(
+      id: data.id.present ? data.id.value : this.id,
+      fromEntryId: data.fromEntryId.present
+          ? data.fromEntryId.value
+          : this.fromEntryId,
+      toEntryId: data.toEntryId.present ? data.toEntryId.value : this.toEntryId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EntryLink(')
+          ..write('id: $id, ')
+          ..write('fromEntryId: $fromEntryId, ')
+          ..write('toEntryId: $toEntryId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, fromEntryId, toEntryId);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is EntryLink &&
+          other.id == this.id &&
+          other.fromEntryId == this.fromEntryId &&
+          other.toEntryId == this.toEntryId);
+}
+
+class EntryLinksCompanion extends UpdateCompanion<EntryLink> {
+  final Value<int> id;
+  final Value<int> fromEntryId;
+  final Value<int> toEntryId;
+  const EntryLinksCompanion({
+    this.id = const Value.absent(),
+    this.fromEntryId = const Value.absent(),
+    this.toEntryId = const Value.absent(),
+  });
+  EntryLinksCompanion.insert({
+    this.id = const Value.absent(),
+    required int fromEntryId,
+    required int toEntryId,
+  }) : fromEntryId = Value(fromEntryId),
+       toEntryId = Value(toEntryId);
+  static Insertable<EntryLink> custom({
+    Expression<int>? id,
+    Expression<int>? fromEntryId,
+    Expression<int>? toEntryId,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (fromEntryId != null) 'from_entry_id': fromEntryId,
+      if (toEntryId != null) 'to_entry_id': toEntryId,
+    });
+  }
+
+  EntryLinksCompanion copyWith({
+    Value<int>? id,
+    Value<int>? fromEntryId,
+    Value<int>? toEntryId,
+  }) {
+    return EntryLinksCompanion(
+      id: id ?? this.id,
+      fromEntryId: fromEntryId ?? this.fromEntryId,
+      toEntryId: toEntryId ?? this.toEntryId,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (fromEntryId.present) {
+      map['from_entry_id'] = Variable<int>(fromEntryId.value);
+    }
+    if (toEntryId.present) {
+      map['to_entry_id'] = Variable<int>(toEntryId.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EntryLinksCompanion(')
+          ..write('id: $id, ')
+          ..write('fromEntryId: $fromEntryId, ')
+          ..write('toEntryId: $toEntryId')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1168,6 +1429,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $EntriesTable entries = $EntriesTable(this);
   late final $CharacterRelationsTable characterRelations =
       $CharacterRelationsTable(this);
+  late final $EntryLinksTable entryLinks = $EntryLinksTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1176,6 +1438,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     novels,
     entries,
     characterRelations,
+    entryLinks,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -1206,6 +1469,20 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('character_relations', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'entries',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('entry_links', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'entries',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('entry_links', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -2348,6 +2625,365 @@ typedef $$CharacterRelationsTableProcessedTableManager =
       CharacterRelation,
       PrefetchHooks Function({bool fromEntryId, bool toEntryId})
     >;
+typedef $$EntryLinksTableCreateCompanionBuilder =
+    EntryLinksCompanion Function({
+      Value<int> id,
+      required int fromEntryId,
+      required int toEntryId,
+    });
+typedef $$EntryLinksTableUpdateCompanionBuilder =
+    EntryLinksCompanion Function({
+      Value<int> id,
+      Value<int> fromEntryId,
+      Value<int> toEntryId,
+    });
+
+final class $$EntryLinksTableReferences
+    extends BaseReferences<_$AppDatabase, $EntryLinksTable, EntryLink> {
+  $$EntryLinksTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $EntriesTable _fromEntryIdTable(_$AppDatabase db) =>
+      db.entries.createAlias('entry_links__from_entry_id__entries__id');
+
+  $$EntriesTableProcessedTableManager get fromEntryId {
+    final $_column = $_itemColumn<int>('from_entry_id')!;
+
+    final manager = $$EntriesTableTableManager(
+      $_db,
+      $_db.entries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_fromEntryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $EntriesTable _toEntryIdTable(_$AppDatabase db) =>
+      db.entries.createAlias('entry_links__to_entry_id__entries__id');
+
+  $$EntriesTableProcessedTableManager get toEntryId {
+    final $_column = $_itemColumn<int>('to_entry_id')!;
+
+    final manager = $$EntriesTableTableManager(
+      $_db,
+      $_db.entries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_toEntryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$EntryLinksTableFilterComposer
+    extends Composer<_$AppDatabase, $EntryLinksTable> {
+  $$EntryLinksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$EntriesTableFilterComposer get fromEntryId {
+    final $$EntriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.fromEntryId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableFilterComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$EntriesTableFilterComposer get toEntryId {
+    final $$EntriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.toEntryId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableFilterComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$EntryLinksTableOrderingComposer
+    extends Composer<_$AppDatabase, $EntryLinksTable> {
+  $$EntryLinksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$EntriesTableOrderingComposer get fromEntryId {
+    final $$EntriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.fromEntryId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$EntriesTableOrderingComposer get toEntryId {
+    final $$EntriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.toEntryId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$EntryLinksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $EntryLinksTable> {
+  $$EntryLinksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  $$EntriesTableAnnotationComposer get fromEntryId {
+    final $$EntriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.fromEntryId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$EntriesTableAnnotationComposer get toEntryId {
+    final $$EntriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.toEntryId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$EntryLinksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $EntryLinksTable,
+          EntryLink,
+          $$EntryLinksTableFilterComposer,
+          $$EntryLinksTableOrderingComposer,
+          $$EntryLinksTableAnnotationComposer,
+          $$EntryLinksTableCreateCompanionBuilder,
+          $$EntryLinksTableUpdateCompanionBuilder,
+          (EntryLink, $$EntryLinksTableReferences),
+          EntryLink,
+          PrefetchHooks Function({bool fromEntryId, bool toEntryId})
+        > {
+  $$EntryLinksTableTableManager(_$AppDatabase db, $EntryLinksTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$EntryLinksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$EntryLinksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$EntryLinksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> fromEntryId = const Value.absent(),
+                Value<int> toEntryId = const Value.absent(),
+              }) => EntryLinksCompanion(
+                id: id,
+                fromEntryId: fromEntryId,
+                toEntryId: toEntryId,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int fromEntryId,
+                required int toEntryId,
+              }) => EntryLinksCompanion.insert(
+                id: id,
+                fromEntryId: fromEntryId,
+                toEntryId: toEntryId,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$EntryLinksTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({fromEntryId = false, toEntryId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (fromEntryId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.fromEntryId,
+                                referencedTable: $$EntryLinksTableReferences
+                                    ._fromEntryIdTable(db),
+                                referencedColumn: $$EntryLinksTableReferences
+                                    ._fromEntryIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+                    if (toEntryId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.toEntryId,
+                                referencedTable: $$EntryLinksTableReferences
+                                    ._toEntryIdTable(db),
+                                referencedColumn: $$EntryLinksTableReferences
+                                    ._toEntryIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$EntryLinksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $EntryLinksTable,
+      EntryLink,
+      $$EntryLinksTableFilterComposer,
+      $$EntryLinksTableOrderingComposer,
+      $$EntryLinksTableAnnotationComposer,
+      $$EntryLinksTableCreateCompanionBuilder,
+      $$EntryLinksTableUpdateCompanionBuilder,
+      (EntryLink, $$EntryLinksTableReferences),
+      EntryLink,
+      PrefetchHooks Function({bool fromEntryId, bool toEntryId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2358,4 +2994,6 @@ class $AppDatabaseManager {
       $$EntriesTableTableManager(_db, _db.entries);
   $$CharacterRelationsTableTableManager get characterRelations =>
       $$CharacterRelationsTableTableManager(_db, _db.characterRelations);
+  $$EntryLinksTableTableManager get entryLinks =>
+      $$EntryLinksTableTableManager(_db, _db.entryLinks);
 }

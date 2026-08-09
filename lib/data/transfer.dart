@@ -13,6 +13,7 @@ class NovelTransfer {
   static Future<String> exportJson(AppDatabase db, Novel novel) async {
     final entries = await db.allEntriesOf(novel.id);
     final rels = await db.relationsOfNovel(novel.id);
+    final links = await db.linksOfNovel(novel.id);
     final indexOf = {
       for (var i = 0; i < entries.length; i++) entries[i].id: i
     };
@@ -38,6 +39,12 @@ class NovelTransfer {
               'to': indexOf[r.toEntryId],
               'label': r.label,
             }
+      ],
+      'links': [
+        for (final l in links)
+          if (indexOf.containsKey(l.fromEntryId) &&
+              indexOf.containsKey(l.toEntryId))
+            {'from': indexOf[l.fromEntryId], 'to': indexOf[l.toEntryId]}
       ],
     });
   }
@@ -97,8 +104,13 @@ class NovelTransfer {
             label: r['label'] as String? ?? '',
           )
     ];
-    await db.importNovel(
-        title, novel['description'] as String? ?? '', entryRows, relRows);
+    final linkRows = [
+      for (final l in (data['links'] as List? ?? []))
+        if (l is Map && l['from'] is int && l['to'] is int)
+          (from: l['from'] as int, to: l['to'] as int)
+    ];
+    await db.importNovel(title, novel['description'] as String? ?? '',
+        entryRows, relRows, linkRows);
     return title;
   }
 }
