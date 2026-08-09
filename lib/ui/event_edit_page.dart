@@ -245,8 +245,8 @@ class _EventEditPageState extends State<EventEditPage> {
               child: TextField(
                 controller: _outlineCtrl,
                 autofocus: isNew,
-                minLines: 2,
-                maxLines: 5,
+                minLines: 4,
+                maxLines: 10,
                 onChanged: (_) => _dirty = true,
                 decoration: const InputDecoration(
                   labelText: '事件大纲 *',
