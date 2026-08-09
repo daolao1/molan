@@ -18,9 +18,7 @@ const _characterFields = [
   EntryField('appearance', '外貌', '容貌、身形、衣着、标志性特征', 3),
   EntryField('personality', '性格', '性格特点、说话方式、习惯、软肋', 3),
   EntryField('background', '背景经历', '出身与重要过往', 4),
-  EntryField('motivation', '动机与目标', '想要什么、害怕什么、为何而行动', 3),
   EntryField('abilities', '能力/特长', '功法、技能、天赋、装备', 3),
-  EntryField('arc', '成长弧线', '这个角色在故事中如何变化', 3),
   EntryField('notes', '备注', '其他补充', 3),
 ];
 

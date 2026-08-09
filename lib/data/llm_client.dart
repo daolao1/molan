@@ -200,7 +200,8 @@ class LlmClient {
       _fail(e);
     }
   }
-  static Map<String, String> parseJsonReply(String text) {
+  /// 从模型回复中提取 JSON 对象(容忍围栏与前后缀);值保留原始类型
+  static Map<String, dynamic> parseJsonReply(String text) {
     final t = text.trim();
     final start = t.indexOf('{');
     final end = t.lastIndexOf('}');
@@ -209,10 +210,7 @@ class LlmClient {
     }
     try {
       final d = jsonDecode(t.substring(start, end + 1)) as Map;
-      return {
-        for (final e in d.entries)
-          if (e.value != null) e.key.toString(): e.value.toString()
-      };
+      return {for (final e in d.entries) e.key.toString(): e.value};
     } catch (_) {
       throw LlmException('模型返回的 JSON 无法解析,请重试');
     }

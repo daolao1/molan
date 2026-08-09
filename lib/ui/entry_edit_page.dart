@@ -129,17 +129,46 @@ class _EntryEditPageState extends State<EntryEditPage> {
       }
       final data = LlmClient.parseJsonReply(reply);
       if (!mounted) return;
+      String? textOf(String key) {
+        final v = data[key];
+        return v == null || v is List || v is Map ? null : v.toString();
+      }
+
+      var addedRels = 0;
       setState(() {
-        if ((data['name'] ?? '').isNotEmpty) _nameCtrl.text = data['name']!;
+        final name = textOf('name') ?? '';
+        if (name.isNotEmpty) _nameCtrl.text = name;
         for (final f in _fields) {
-          if ((data[f.key] ?? '').isNotEmpty) {
-            _fieldCtrls[f.key]!.text = data[f.key]!;
+          final v = textOf(f.key) ?? '';
+          if (v.isNotEmpty) _fieldCtrls[f.key]!.text = v;
+        }
+        // AI 返回的关系:按名字匹配已有人物,失配/重复的丢弃
+        final rels = data['relations'];
+        if (widget.kind == EntryKind.character && rels is List) {
+          for (final r in rels) {
+            if (r is! Map) continue;
+            final target = r['target']?.toString().trim() ?? '';
+            final label = r['label']?.toString().trim() ?? '';
+            if (target.isEmpty || label.isEmpty) continue;
+            for (final c in _allCharacters) {
+              if (c.name == target && c.id != widget.entry?.id) {
+                final dup = _relations
+                    .any((x) => x.toId == c.id && x.label == label);
+                if (!dup) {
+                  _relations.add((toId: c.id, label: label));
+                  addedRels++;
+                }
+                break;
+              }
+            }
           }
         }
         _aiPromptCtrl.clear();
         _dirty = true;
       });
-      _toast('已生成,请检查各字段并保存');
+      _toast(addedRels > 0
+          ? '已生成(含 $addedRels 条人物关系),请检查并保存'
+          : '已生成,请检查各字段并保存');
     } on LlmException catch (e) {
       _toast(e.message, error: true);
     } finally {

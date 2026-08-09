@@ -26,11 +26,15 @@ String entryGenerationSystem(EntryKind kind,
       ? '''
 - 作答前先用工具检索:用 get_entry_detail 查看与【生成要求】相关条目的完整设定,用 get_relations 查人物关系;最多检索 4 次,查完再输出最终 JSON'''
       : '';
+  final relNote = kind == EntryKind.character
+      ? '''
+- 可额外返回 "relations":[{"target":"人物名","label":"关系"}] 描述本人物与其他人物的关系;target 必须是【现有设定】中已存在的人物名,禁止虚构;label 用 2~6 字(如:师徒、血仇、青梅竹马);没有合适对象就不返回该 key'''
+      : '';
   final common = '''
 - 只输出一个 JSON 对象,禁止输出任何解释、前后缀或代码围栏
 - 可用的 key:"name"(名称)、$keys
 - 全部用中文撰写;内容具体、有画面感、可直接用于写作,避免空泛套话
-- 充分利用【现有设定】:与已有人物、地点、物品、场景建立合理的关联与呼应,严禁与现有设定矛盾$toolNote
+- 充分利用【现有设定】:与已有人物、地点、物品、场景建立合理的关联与呼应,严禁与现有设定矛盾$toolNote$relNote
 - 单行字段控制在 30 字内,多行字段 50~150 字''';
   if (mode == GenerationMode.generate) {
     return '''
