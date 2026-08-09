@@ -1,0 +1,97 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+
+import 'db.dart';
+import 'save_file_stub.dart' if (dart.library.io) 'save_file_io.dart';
+
+/// 小说导出/导入(JSON 文件)
+class NovelTransfer {
+  static const _formatVersion = 1;
+
+  static Future<String> exportJson(AppDatabase db, Novel novel) async {
+    final entries = await db.allEntriesOf(novel.id);
+    final rels = await db.relationsOfNovel(novel.id);
+    final indexOf = {
+      for (var i = 0; i < entries.length; i++) entries[i].id: i
+    };
+    return const JsonEncoder.withIndent('  ').convert({
+      'molan_export': _formatVersion,
+      'novel': {'title': novel.title, 'description': novel.description},
+      'entries': [
+        for (final e in entries)
+          {'kind': e.kind, 'name': e.name, 'content': e.content}
+      ],
+      'relations': [
+        for (final r in rels)
+          if (indexOf.containsKey(r.fromEntryId) &&
+              indexOf.containsKey(r.toEntryId))
+            {
+              'from': indexOf[r.fromEntryId],
+              'to': indexOf[r.toEntryId],
+              'label': r.label,
+            }
+      ],
+    });
+  }
+
+  /// 导出为文件;返回是否完成(用户取消返回 false)
+  static Future<bool> exportToFile(AppDatabase db, Novel novel) async {
+    final bytes =
+        Uint8List.fromList(utf8.encode(await exportJson(db, novel)));
+    final path = await FilePicker.saveFile(
+      fileName: 'molan-${novel.title}.json',
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      bytes: bytes,
+    );
+    if (path == null) return false;
+    await maybeWriteFile(path, bytes);
+    return true;
+  }
+
+  /// 从文件导入,返回导入的小说标题;用户取消返回 null
+  static Future<String?> importFromFile(AppDatabase db) async {
+    final res = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      withData: true,
+    );
+    final bytes = res?.files.single.bytes;
+    if (bytes == null) return null;
+    final Object? data;
+    try {
+      data = jsonDecode(utf8.decode(bytes));
+    } catch (_) {
+      throw const FormatException('文件不是有效的 JSON');
+    }
+    if (data is! Map || data['molan_export'] == null) {
+      throw const FormatException('这不是墨澜导出的文件');
+    }
+    final novel = data['novel'] as Map? ?? {};
+    final title = (novel['title'] as String?)?.trim() ?? '';
+    if (title.isEmpty) throw const FormatException('文件缺少小说标题');
+    final entryRows = [
+      for (final e in (data['entries'] as List? ?? []))
+        if (e is Map && (e['name'] as String?)?.isNotEmpty == true)
+          (
+            kind: e['kind'] as String? ?? 'character',
+            name: e['name'] as String,
+            content: e['content'] as String? ?? '',
+          )
+    ];
+    final relRows = [
+      for (final r in (data['relations'] as List? ?? []))
+        if (r is Map && r['from'] is int && r['to'] is int)
+          (
+            from: r['from'] as int,
+            to: r['to'] as int,
+            label: r['label'] as String? ?? '',
+          )
+    ];
+    await db.importNovel(
+        title, novel['description'] as String? ?? '', entryRows, relRows);
+    return title;
+  }
+}

@@ -149,4 +149,33 @@ class AppDatabase extends _$AppDatabase {
               .insert(fromEntryId: entryId, toEntryId: r.toId, label: r.label));
         }
       });
+
+  /// 导入一本小说(条目用数组索引引用关系),返回新小说 id
+  Future<int> importNovel(
+    String title,
+    String description,
+    List<({String kind, String name, String content})> entryRows,
+    List<({int from, int to, String label})> relRows,
+  ) =>
+      transaction(() async {
+        final novelId = await createNovel(title, description);
+        final ids = <int>[];
+        for (final e in entryRows) {
+          ids.add(await into(entries).insert(EntriesCompanion.insert(
+              novelId: novelId,
+              kind: e.kind,
+              name: e.name,
+              content: Value(e.content))));
+        }
+        for (final r in relRows) {
+          if (r.from < 0 || r.from >= ids.length) continue;
+          if (r.to < 0 || r.to >= ids.length) continue;
+          await into(characterRelations).insert(
+              CharacterRelationsCompanion.insert(
+                  fromEntryId: ids[r.from],
+                  toEntryId: ids[r.to],
+                  label: r.label));
+        }
+        return novelId;
+      });
 }

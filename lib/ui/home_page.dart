@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/db.dart';
+import '../data/transfer.dart';
 import 'novel_page.dart';
 import 'settings_page.dart';
 
@@ -66,12 +67,48 @@ class HomePage extends StatelessWidget {
     if (ok == true) await db.deleteNovel(novel.id);
   }
 
+  void _toast(BuildContext context, String msg, {bool error = false}) {
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        content: Text(msg),
+        backgroundColor: error ? Theme.of(context).colorScheme.error : null,
+      ));
+  }
+
+  Future<void> _export(BuildContext context, Novel novel) async {
+    try {
+      final done = await NovelTransfer.exportToFile(db, novel);
+      if (done && context.mounted) _toast(context, '已导出《${novel.title}》');
+    } catch (e) {
+      if (context.mounted) _toast(context, '导出失败：$e', error: true);
+    }
+  }
+
+  Future<void> _import(BuildContext context) async {
+    try {
+      final title = await NovelTransfer.importFromFile(db);
+      if (title != null && context.mounted) {
+        _toast(context, '已导入《$title》');
+      }
+    } on FormatException catch (e) {
+      if (context.mounted) _toast(context, e.message, error: true);
+    } catch (e) {
+      if (context.mounted) _toast(context, '导入失败：$e', error: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('墨澜'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.file_open_outlined),
+            tooltip: '导入小说',
+            onPressed: () => _import(context),
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: '设置',
@@ -104,9 +141,11 @@ class HomePage extends StatelessWidget {
                           maxLines: 2, overflow: TextOverflow.ellipsis),
                   trailing: PopupMenuButton<String>(
                     onSelected: (v) {
+                      if (v == 'export') _export(context, novel);
                       if (v == 'delete') _confirmDeleteNovel(context, novel);
                     },
                     itemBuilder: (context) => const [
+                      PopupMenuItem(value: 'export', child: Text('导出')),
                       PopupMenuItem(value: 'delete', child: Text('删除')),
                     ],
                   ),
