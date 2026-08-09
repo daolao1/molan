@@ -53,7 +53,7 @@ class NovelTransfer {
   static Future<bool> exportToFile(AppDatabase db, Novel novel) async {
     final bytes =
         Uint8List.fromList(utf8.encode(await exportJson(db, novel)));
-    final path = await FilePicker.saveFile(
+    final path = await FilePicker.platform.saveFile(
       fileName: 'molan-${novel.title}.json',
       type: FileType.custom,
       allowedExtensions: ['json'],
@@ -66,7 +66,7 @@ class NovelTransfer {
 
   /// 从文件导入,返回导入的小说标题;用户取消返回 null
   static Future<String?> importFromFile(AppDatabase db) async {
-    final res = await FilePicker.pickFiles(
+    final res = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
       withData: true,
