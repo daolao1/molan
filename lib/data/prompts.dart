@@ -4,21 +4,35 @@ library;
 import 'db.dart';
 import 'entry_fields.dart';
 
-/// 生成设定卡的系统提示词
-String entryGenerationSystem(EntryKind kind) {
+/// 生成设定卡的系统提示词;incremental 为真时只增量完善已有卡片
+String entryGenerationSystem(EntryKind kind, {required bool incremental}) {
   final fields = entryFieldsFor(kind);
   final keys =
       fields.map((f) => '"${f.key}"(${f.label}:${f.hint})').join('、');
-  return '''
+  final common = '''
+- 只输出一个 JSON 对象,禁止输出任何解释、前后缀或代码围栏
+- 可用的 key:"name"(名称)、$keys
+- 全部用中文撰写;内容具体、有画面感、可直接用于写作,避免空泛套话
+- 充分利用【现有设定】:与已有人物、地点、物品、场景建立合理的关联与呼应,严禁与现有设定矛盾
+- 单行字段控制在 30 字内,多行字段 50~150 字''';
+  if (!incremental) {
+    return '''
 你是资深小说设定师,负责为作者生成高质量的${kind.label}设定卡。
 
 输出要求:
-- 只输出一个 JSON 对象,禁止输出任何解释、前后缀或代码围栏
-- JSON 的 key 固定为:"name"(名称)、$keys
-- 全部用中文撰写;内容具体、有画面感、可直接用于写作,避免空泛套话
-- 充分利用【现有设定】:与已有人物、地点、物品、场景建立合理的关联与呼应,严禁与现有设定矛盾
-- 不得与已有条目重名;若用户已填部分字段,尊重其设定并在此基础上补全融合
-- 单行字段控制在 30 字内,多行字段 50~150 字
+- 返回完整设定卡:包含 "name" 与全部字段
+- 不得与已有条目重名
+$common
+''';
+  }
+  return '''
+你是资深小说设定师。用户已有一张填写过的${kind.label}设定卡,本次任务是根据【生成要求】做增量完善。
+
+输出要求:
+- 只返回需要新增或修改的字段;内容不变的字段一律不要出现在 JSON 中
+- 已填内容默认保留:修改某字段时保留其原有要点,把新设定自然融入,而不是推翻重写
+- 除非【生成要求】明确要求,否则不要修改 "name"
+$common
 ''';
 }
 

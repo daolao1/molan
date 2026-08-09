@@ -93,9 +93,12 @@ class _EntryEditPageState extends State<EntryEditPage> {
       final settings = await SettingsStore.load();
       final all = await widget.db.allEntriesOf(widget.novel.id);
       final rels = await widget.db.relationsOfNovel(widget.novel.id);
+      // 卡片已有内容时走增量模式:只让模型返回需新增/修改的字段
+      final incremental = _nameCtrl.text.trim().isNotEmpty ||
+          _fieldCtrls.values.any((c) => c.text.trim().isNotEmpty);
       final reply = await LlmClient.chat(
         settings,
-        system: entryGenerationSystem(widget.kind),
+        system: entryGenerationSystem(widget.kind, incremental: incremental),
         user: entryGenerationUser(
           novel: widget.novel,
           kind: widget.kind,
