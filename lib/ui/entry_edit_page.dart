@@ -84,6 +84,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
             _fieldCtrls[f.key]!.text = data[f.key]!;
           }
         }
+        _aiPromptCtrl.clear();
         _dirty = true;
       });
       _toast('已生成,请检查各字段并保存');
