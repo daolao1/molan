@@ -31,6 +31,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
   late final Map<String, TextEditingController> _fieldCtrls;
   bool _dirty = false;
   bool _generating = false;
+  late GenerationMode _genMode = widget.entry == null
+      ? GenerationMode.generate
+      : GenerationMode.supplement;
 
   // 人物关系(仅 character):内存暂存,保存时同步入库
   List<Entry> _allCharacters = const [];
@@ -94,9 +97,6 @@ class _EntryEditPageState extends State<EntryEditPage> {
       final settings = await SettingsStore.load();
       final all = await widget.db.allEntriesOf(widget.novel.id);
       final rels = await widget.db.relationsOfNovel(widget.novel.id);
-      // 卡片已有内容时走增量模式:只让模型返回需新增/修改的字段
-      final incremental = _nameCtrl.text.trim().isNotEmpty ||
-          _fieldCtrls.values.any((c) => c.text.trim().isNotEmpty);
       final userMsg = entryGenerationUser(
         novel: widget.novel,
         kind: widget.kind,
@@ -115,7 +115,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
         reply = await LlmClient.chatWithTools(
           settings,
           system: entryGenerationSystem(widget.kind,
-              incremental: incremental, withTools: true),
+              mode: _genMode, withTools: true),
           user: userMsg,
           tools: novelToolSchemas,
           onToolCall: executor.call,
@@ -123,8 +123,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
       } on ToolsUnsupportedException {
         reply = await LlmClient.chat(
           settings,
-          system:
-              entryGenerationSystem(widget.kind, incremental: incremental),
+          system: entryGenerationSystem(widget.kind, mode: _genMode),
           user: userMsg,
         );
       }
@@ -303,25 +302,45 @@ class _EntryEditPageState extends State<EntryEditPage> {
                       minLines: 2,
                       maxLines: 4,
                       decoration: InputDecoration(
-                        hintText: '一句话描述你想要的${widget.kind.label},'
-                            '已填内容会作为参考一并融合',
+                        hintText: _genMode == GenerationMode.generate
+                            ? '一句话描述你想要的${widget.kind.label},AI 自由发挥填满整卡'
+                            : '写下要补充的设定,AI 只更新相关字段,其余不动',
                         border: const OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: FilledButton.tonalIcon(
-                        onPressed: _generating ? null : _generate,
-                        icon: _generating
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2))
-                            : const Icon(Icons.auto_awesome),
-                        label: Text(_generating ? '生成中…' : '生成并填入'),
-                      ),
+                    Row(
+                      children: [
+                        SegmentedButton<GenerationMode>(
+                          segments: [
+                            for (final m in GenerationMode.values)
+                              ButtonSegment(
+                                  value: m,
+                                  label: Text(m.label),
+                                  tooltip: m == GenerationMode.generate
+                                      ? '自由发挥,填满整张卡片'
+                                      : '只写你提到的内容,其他字段不动'),
+                          ],
+                          selected: {_genMode},
+                          showSelectedIcon: false,
+                          onSelectionChanged: (s) =>
+                              setState(() => _genMode = s.first),
+                        ),
+                        const Spacer(),
+                        FilledButton.tonalIcon(
+                          onPressed: _generating ? null : _generate,
+                          icon: _generating
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2))
+                              : const Icon(Icons.auto_awesome),
+                          label: Text(_generating
+                              ? '生成中…'
+                              : '${_genMode.label}并填入'),
+                        ),
+                      ],
                     ),
                   ],
                 ),

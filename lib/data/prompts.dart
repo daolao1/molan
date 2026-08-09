@@ -4,10 +4,21 @@ library;
 import 'db.dart';
 import 'entry_fields.dart';
 
-/// 生成设定卡的系统提示词;incremental 为真时只增量完善已有卡片;
-/// withTools 为真时告知模型可用检索工具
+/// AI 生成模式
+enum GenerationMode {
+  /// 自由发挥,填满整张卡片
+  generate('生成'),
+
+  /// 只写用户明确提到的内容
+  supplement('补充');
+
+  const GenerationMode(this.label);
+  final String label;
+}
+
+/// 生成设定卡的系统提示词;withTools 为真时告知模型可用检索工具
 String entryGenerationSystem(EntryKind kind,
-    {required bool incremental, bool withTools = false}) {
+    {required GenerationMode mode, bool withTools = false}) {
   final fields = entryFieldsFor(kind);
   final keys =
       fields.map((f) => '"${f.key}"(${f.label}:${f.hint})').join('、');
@@ -21,22 +32,24 @@ String entryGenerationSystem(EntryKind kind,
 - 全部用中文撰写;内容具体、有画面感、可直接用于写作,避免空泛套话
 - 充分利用【现有设定】:与已有人物、地点、物品、场景建立合理的关联与呼应,严禁与现有设定矛盾$toolNote
 - 单行字段控制在 30 字内,多行字段 50~150 字''';
-  if (!incremental) {
+  if (mode == GenerationMode.generate) {
     return '''
 你是资深小说设定师,负责为作者生成高质量的${kind.label}设定卡。
 
 输出要求:
-- 返回完整设定卡:包含 "name" 与全部字段
+- 返回完整设定卡:包含 "name" 与全部字段,可在【生成要求】基础上自由发挥补足细节
+- 若用户已填部分字段,尊重其设定并在此基础上完善
 - 不得与已有条目重名
 $common
 ''';
   }
   return '''
-你是资深小说设定师。用户已有一张填写过的${kind.label}设定卡,本次任务是根据【生成要求】做增量完善。
+你是资深小说设定师,本次任务是按作者指令对${kind.label}设定卡做定点补充。
 
 输出要求:
-- 只返回需要新增或修改的字段;内容不变的字段一律不要出现在 JSON 中
-- 已填内容默认保留:修改某字段时保留其原有要点,把新设定自然融入,而不是推翻重写
+- 只输出与【生成要求】直接相关的字段;用户未提及的方面一律不要返回,即使那些字段目前为空也不要主动填写
+- 不要自由发挥新设定;忠实于用户的描述,仅做必要的文字打磨
+- 相关字段已有内容时,保留原有要点,把新设定自然融入而不是推翻重写
 - 除非【生成要求】明确要求,否则不要修改 "name"
 $common
 ''';
