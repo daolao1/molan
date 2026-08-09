@@ -30,10 +30,12 @@ class _NovelPageState extends State<NovelPage>
   late final TabController _tab =
       TabController(length: _kinds.length, vsync: this);
   bool _bulkGenerating = false;
+  final _lorePromptCtrl = TextEditingController();
 
   @override
   void dispose() {
     _tab.dispose();
+    _lorePromptCtrl.dispose();
     super.dispose();
   }
 
@@ -64,35 +66,13 @@ class _NovelPageState extends State<NovelPage>
       ));
   }
 
-  /// 一个提示词批量生成多条设定
+  /// 一个提示词批量生成多条设定(输入来自列表顶部生成框)
   Future<void> _bulkGenerateLore() async {
-    final promptCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('AI 批量生成设定'),
-        content: TextField(
-          controller: promptCtrl,
-          autofocus: true,
-          minLines: 3,
-          maxLines: 6,
-          decoration: const InputDecoration(
-            hintText: '例:修真等级体系、三大门派及恩怨、灵石货币体系…\n一条要求可生成多条设定',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('生成')),
-        ],
-      ),
-    );
-    final request = promptCtrl.text.trim();
-    if (ok != true || request.isEmpty) return;
+    final request = _lorePromptCtrl.text.trim();
+    if (request.isEmpty) {
+      _toast('先描述要生成的设定,如:修真等级体系、三大门派及恩怨', error: true);
+      return;
+    }
     setState(() => _bulkGenerating = true);
     try {
       final settings = await SettingsStore.load();
@@ -181,6 +161,7 @@ class _NovelPageState extends State<NovelPage>
         _toast(linked > 0
             ? '已添加 ${items.length} 条设定(含 $linked 条关联)'
             : '已添加 ${items.length} 条设定');
+        _lorePromptCtrl.clear();
       }
     } on LlmException catch (e) {
       _toast(e.message, error: true);
@@ -194,23 +175,6 @@ class _NovelPageState extends State<NovelPage>
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.novel.title),
-        actions: [
-          AnimatedBuilder(
-            animation: _tab,
-            builder: (context, _) => _currentKind == EntryKind.lore
-                ? IconButton(
-                    icon: _bulkGenerating
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.auto_awesome),
-                    tooltip: 'AI 批量生成设定',
-                    onPressed: _bulkGenerating ? null : _bulkGenerateLore,
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ],
         bottom: TabBar(
           controller: _tab,
           tabs: [for (final k in _kinds) Tab(text: k.label, icon: Icon(k.icon))],
@@ -224,6 +188,7 @@ class _NovelPageState extends State<NovelPage>
                 db: widget.db,
                 novelId: widget.novel.id,
                 kind: kind,
+                header: kind == EntryKind.lore ? _loreGeneratorCard() : null,
                 onTapEntry: (e) => _openEditor(entry: e)),
         ],
       ),
@@ -237,6 +202,51 @@ class _NovelPageState extends State<NovelPage>
       ),
     );
   }
+
+  Widget _loreGeneratorCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.auto_awesome,
+                    size: 18, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 6),
+                Text('AI 生成设定', style: Theme.of(context).textTheme.titleSmall),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _lorePromptCtrl,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText: '例:修真等级体系、三大门派及恩怨、灵石货币…一条要求可生成多条',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonalIcon(
+                onPressed: _bulkGenerating ? null : _bulkGenerateLore,
+                icon: _bulkGenerating
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.auto_awesome),
+                label: Text(_bulkGenerating ? '生成中…' : '生成'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _EntryList extends StatelessWidget {
@@ -244,12 +254,14 @@ class _EntryList extends StatelessWidget {
       {required this.db,
       required this.novelId,
       required this.kind,
-      required this.onTapEntry});
+      required this.onTapEntry,
+      this.header});
 
   final AppDatabase db;
   final int novelId;
   final EntryKind kind;
   final void Function(Entry) onTapEntry;
+  final Widget? header;
 
   @override
   Widget build(BuildContext context) {
@@ -257,13 +269,21 @@ class _EntryList extends StatelessWidget {
       stream: db.watchEntries(novelId, kind),
       builder: (context, snapshot) {
         final items = snapshot.data ?? const [];
-        if (items.isEmpty) {
-          return Center(child: Text('还没有${kind.label},点右下角新建'));
-        }
         return ListView.builder(
           padding: const EdgeInsets.all(8),
-          itemCount: items.length,
-          itemBuilder: (context, i) {
+          itemCount: items.length + (header == null ? 0 : 1) + (items.isEmpty ? 1 : 0),
+          itemBuilder: (context, index) {
+            var i = index;
+            if (header != null) {
+              if (i == 0) return header!;
+              i--;
+            }
+            if (items.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.all(24),
+                child: Center(child: Text('还没有${kind.label},点右下角新建')),
+              );
+            }
             final e = items[i];
             final subtitle = entrySubtitle(e);
             return Card(

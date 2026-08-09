@@ -458,7 +458,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Card(
+            // 设定的 AI 生成在列表页顶部统一提供,编辑页不重复显示
+            if (widget.kind != EntryKind.lore)
+              Card(
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(
