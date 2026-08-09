@@ -33,6 +33,9 @@ class _NovelPageState extends State<NovelPage>
   bool _bulkGenerating = false;
   final _lorePromptCtrl = TextEditingController();
 
+  /// 0 = 设定,1 = 写作
+  int _section = 0;
+
   @override
   void dispose() {
     _tab.dispose();
@@ -175,46 +178,73 @@ class _NovelPageState extends State<NovelPage>
 
   @override
   Widget build(BuildContext context) {
+    final isWriting = _section == 1;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.novel.title),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_note),
-            tooltip: '写作',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) =>
-                      ChaptersPage(db: widget.db, novel: widget.novel)),
-            ),
+        title: Text('${widget.novel.title} · ${isWriting ? '写作' : '设定'}'),
+        bottom: isWriting
+            ? null
+            : TabBar(
+                controller: _tab,
+                tabs: [
+                  for (final k in _kinds) Tab(text: k.label, icon: Icon(k.icon))
+                ],
+              ),
+      ),
+      body: Row(
+        children: [
+          Expanded(
+            child: isWriting
+                ? ChaptersView(db: widget.db, novel: widget.novel)
+                : TabBarView(
+                    controller: _tab,
+                    children: [
+                      for (final kind in _kinds)
+                        _EntryList(
+                            db: widget.db,
+                            novelId: widget.novel.id,
+                            kind: kind,
+                            header: kind == EntryKind.lore
+                                ? _loreGeneratorCard()
+                                : null,
+                            onTapEntry: (e) => _openEditor(entry: e)),
+                    ],
+                  ),
+          ),
+          const VerticalDivider(width: 1),
+          NavigationRail(
+            selectedIndex: _section,
+            onDestinationSelected: (i) => setState(() => _section = i),
+            labelType: NavigationRailLabelType.all,
+            minWidth: 64,
+            destinations: const [
+              NavigationRailDestination(
+                  icon: Icon(Icons.category_outlined),
+                  selectedIcon: Icon(Icons.category),
+                  label: Text('设定')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.edit_note_outlined),
+                  selectedIcon: Icon(Icons.edit_note),
+                  label: Text('写作')),
+            ],
           ),
         ],
-        bottom: TabBar(
-          controller: _tab,
-          tabs: [for (final k in _kinds) Tab(text: k.label, icon: Icon(k.icon))],
-        ),
       ),
-      body: TabBarView(
-        controller: _tab,
-        children: [
-          for (final kind in _kinds)
-            _EntryList(
-                db: widget.db,
-                novelId: widget.novel.id,
-                kind: kind,
-                header: kind == EntryKind.lore ? _loreGeneratorCard() : null,
-                onTapEntry: (e) => _openEditor(entry: e)),
-        ],
-      ),
-      floatingActionButton: AnimatedBuilder(
-        animation: _tab,
-        builder: (context, _) => FloatingActionButton.extended(
-          onPressed: () => _openEditor(),
-          icon: const Icon(Icons.add),
-          label: Text('新建${_currentKind.label}'),
-        ),
-      ),
+      floatingActionButton: isWriting
+          ? FloatingActionButton.extended(
+              onPressed: () =>
+                  showChapterDialog(context, widget.db, widget.novel),
+              icon: const Icon(Icons.add),
+              label: const Text('新建章节'),
+            )
+          : AnimatedBuilder(
+              animation: _tab,
+              builder: (context, _) => FloatingActionButton.extended(
+                onPressed: () => _openEditor(),
+                icon: const Icon(Icons.add),
+                label: Text('新建${_currentKind.label}'),
+              ),
+            ),
     );
   }
 
