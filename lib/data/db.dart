@@ -39,7 +39,14 @@ enum EntryKind {
 @DriftDatabase(tables: [Novels, Entries])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
-      : super(executor ?? driftDatabase(name: 'molan'));
+      : super(executor ??
+            driftDatabase(
+              name: 'molan',
+              web: DriftWebOptions(
+                sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+                driftWorker: Uri.parse('drift_worker.js'),
+              ),
+            ));
 
   @override
   int get schemaVersion => 1;
