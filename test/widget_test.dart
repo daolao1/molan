@@ -36,7 +36,7 @@ void main() {
     // 新建人物
     await tester.tap(find.text('新建人物'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextField, '人物名称'), '主角');
+    await tester.enterText(find.widgetWithText(TextField, '人物名称 *'), '主角');
     await tester.tap(find.byIcon(Icons.check));
     await tester.pumpAndSettle();
 

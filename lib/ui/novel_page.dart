@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/db.dart';
+import '../data/entry_fields.dart';
 import 'entry_edit_page.dart';
 
 class NovelPage extends StatefulWidget {
@@ -100,13 +101,14 @@ class _EntryList extends StatelessWidget {
           itemCount: items.length,
           itemBuilder: (context, i) {
             final e = items[i];
+            final subtitle = entrySubtitle(e);
             return Card(
               child: ListTile(
                 leading: Icon(kind.icon),
                 title: Text(e.name),
-                subtitle: e.content.isEmpty
+                subtitle: subtitle.isEmpty
                     ? null
-                    : Text(e.content,
+                    : Text(subtitle,
                         maxLines: 2, overflow: TextOverflow.ellipsis),
                 trailing: PopupMenuButton<String>(
                   onSelected: (v) async {
