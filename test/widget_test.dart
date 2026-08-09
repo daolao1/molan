@@ -31,6 +31,7 @@ void main() {
     expect(find.text('人物'), findsOneWidget);
     expect(find.text('地点'), findsOneWidget);
     expect(find.text('物品'), findsOneWidget);
+    expect(find.text('设定'), findsOneWidget);
     expect(find.text('场景'), findsNothing);
 
     // 新建人物

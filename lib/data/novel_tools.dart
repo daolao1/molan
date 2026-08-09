@@ -27,7 +27,7 @@ const novelToolSchemas = [
         'properties': {
           'kind': {
             'type': 'string',
-            'enum': ['character', 'location', 'item', 'scene'],
+            'enum': ['character', 'location', 'item', 'scene', 'lore'],
             'description': '条目类型;省略则返回全部类型',
           }
         },

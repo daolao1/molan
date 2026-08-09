@@ -216,6 +216,43 @@ class LlmClient {
     }
   }
 
+  /// 从模型回复中提取 JSON 数组(容忍围栏/对象包裹)
+  static List<Map<String, dynamic>> parseJsonArrayReply(String text) {
+    final t = text.trim();
+    final start = t.indexOf('[');
+    final end = t.lastIndexOf(']');
+    if (start >= 0 && end > start) {
+      try {
+        final d = jsonDecode(t.substring(start, end + 1));
+        if (d is List) {
+          return [
+            for (final e in d)
+              if (e is Map) e.cast<String, dynamic>()
+          ];
+        }
+      } catch (_) {}
+    }
+    // 容忍 {"items":[…]} 式包裹
+    final os = t.indexOf('{');
+    final oe = t.lastIndexOf('}');
+    if (os >= 0 && oe > os) {
+      try {
+        final obj = jsonDecode(t.substring(os, oe + 1));
+        if (obj is Map) {
+          for (final v in obj.values) {
+            if (v is List) {
+              return [
+                for (final e in v)
+                  if (e is Map) e.cast<String, dynamic>()
+              ];
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    throw LlmException('模型未返回条目数组,请重试');
+  }
+
   static String _errorText(http.Response resp) {
     try {
       final body = jsonDecode(utf8.decode(resp.bodyBytes));

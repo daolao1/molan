@@ -97,6 +97,36 @@ String _novelContext(
   return buf.isEmpty ? '(暂无任何设定)' : buf.toString().trimRight();
 }
 
+/// 批量生成世界观设定条目的系统提示词
+String loreGenerationSystem({bool withTools = false}) {
+  final toolNote = withTools
+      ? '\n- 作答前可用工具检索现有设定细节(get_entry_detail / list_entries / get_relations),最多 4 次'
+      : '';
+  return '''
+你是资深小说设定师,负责为小说批量生成世界观设定条目。
+
+输出要求:
+- 只输出一个 JSON 数组,形如 [{"name":"条目名","detail":"条目内容"},…],禁止任何其他文字或代码围栏
+- 按【生成要求】拆分为若干独立条目,每条聚焦一个主题;数量以要求为准,未指明时 3~6 条
+- name 简短(2~10 字),detail 100~300 字,具体可直接用于写作
+- 不与已有设定重名,严禁与现有设定矛盾,与已有内容互相呼应$toolNote
+- 全部用中文撰写
+''';
+}
+
+/// 批量生成设定的用户消息
+String loreGenerationUser({
+  required Novel novel,
+  required List<Entry> allEntries,
+  required List<CharacterRelation> relations,
+  required String request,
+}) =>
+    '''
+【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
+${_novelContext(allEntries, relations)}
+【生成要求】$request
+''';
+
 /// 生成设定卡的用户消息(动态携带全书现有设定)
 String entryGenerationUser({
   required Novel novel,

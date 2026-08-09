@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../data/db.dart';
 import '../data/entry_fields.dart';
+import '../data/llm_client.dart';
+import '../data/novel_tools.dart';
+import '../data/prompts.dart';
+import '../data/settings.dart';
 import 'entry_edit_page.dart';
 
 class NovelPage extends StatefulWidget {
@@ -17,9 +21,15 @@ class NovelPage extends StatefulWidget {
 class _NovelPageState extends State<NovelPage>
     with SingleTickerProviderStateMixin {
   // 场景挂在地点下,不作为顶层 tab
-  static const _kinds = [EntryKind.character, EntryKind.location, EntryKind.item];
+  static const _kinds = [
+    EntryKind.character,
+    EntryKind.location,
+    EntryKind.item,
+    EntryKind.lore,
+  ];
   late final TabController _tab =
       TabController(length: _kinds.length, vsync: this);
+  bool _bulkGenerating = false;
 
   @override
   void dispose() {
@@ -43,11 +53,141 @@ class _NovelPageState extends State<NovelPage>
     );
   }
 
+  void _toast(String msg, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        content: Text(msg),
+        backgroundColor: error ? Theme.of(context).colorScheme.error : null,
+        duration: Duration(seconds: error ? 6 : 3),
+      ));
+  }
+
+  /// 一个提示词批量生成多条设定
+  Future<void> _bulkGenerateLore() async {
+    final promptCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('AI 批量生成设定'),
+        content: TextField(
+          controller: promptCtrl,
+          autofocus: true,
+          minLines: 3,
+          maxLines: 6,
+          decoration: const InputDecoration(
+            hintText: '例:修真等级体系、三大门派及恩怨、灵石货币体系…\n一条要求可生成多条设定',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('生成')),
+        ],
+      ),
+    );
+    final request = promptCtrl.text.trim();
+    if (ok != true || request.isEmpty) return;
+    setState(() => _bulkGenerating = true);
+    try {
+      final settings = await SettingsStore.load();
+      final all = await widget.db.allEntriesOf(widget.novel.id);
+      final rels = await widget.db.relationsOfNovel(widget.novel.id);
+      final userMsg = loreGenerationUser(
+          novel: widget.novel,
+          allEntries: all,
+          relations: rels,
+          request: request);
+      String reply;
+      try {
+        reply = await LlmClient.chatWithTools(
+          settings,
+          system: loreGenerationSystem(withTools: true),
+          user: userMsg,
+          tools: novelToolSchemas,
+          onToolCall: NovelToolExecutor(widget.db, widget.novel.id).call,
+        );
+      } on ToolsUnsupportedException {
+        reply = await LlmClient.chat(settings,
+            system: loreGenerationSystem(), user: userMsg);
+      }
+      final items = [
+        for (final m in LlmClient.parseJsonArrayReply(reply))
+          (
+            name: m['name']?.toString().trim() ?? '',
+            detail: m['detail']?.toString().trim() ?? '',
+          )
+      ].where((it) => it.name.isNotEmpty && it.detail.isNotEmpty).toList();
+      if (items.isEmpty) throw LlmException('未生成有效条目,请重试');
+      if (!mounted) return;
+      final accept = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('生成了 ${items.length} 条设定'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: items.length,
+              itemBuilder: (context, i) => ListTile(
+                dense: true,
+                title: Text(items[i].name),
+                subtitle: Text(items[i].detail,
+                    maxLines: 3, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('放弃')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('全部添加')),
+          ],
+        ),
+      );
+      if (accept == true) {
+        for (final it in items) {
+          await widget.db.createEntry(widget.novel.id, EntryKind.lore,
+              it.name, encodeEntryContent({'detail': it.detail}));
+        }
+        _toast('已添加 ${items.length} 条设定');
+      }
+    } on LlmException catch (e) {
+      _toast(e.message, error: true);
+    } finally {
+      if (mounted) setState(() => _bulkGenerating = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.novel.title),
+        actions: [
+          AnimatedBuilder(
+            animation: _tab,
+            builder: (context, _) => _currentKind == EntryKind.lore
+                ? IconButton(
+                    icon: _bulkGenerating
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.auto_awesome),
+                    tooltip: 'AI 批量生成设定',
+                    onPressed: _bulkGenerating ? null : _bulkGenerateLore,
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
         bottom: TabBar(
           controller: _tab,
           tabs: [for (final k in _kinds) Tab(text: k.label, icon: Icon(k.icon))],

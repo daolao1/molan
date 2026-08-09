@@ -48,11 +48,16 @@ const _sceneFields = [
   EntryField('notes', '备注', '其他补充', 3),
 ];
 
+const _loreFields = [
+  EntryField('detail', '内容', '这条设定的具体描述', 6),
+];
+
 List<EntryField> entryFieldsFor(EntryKind kind) => switch (kind) {
       EntryKind.character => _characterFields,
       EntryKind.location => _locationFields,
       EntryKind.item => _itemFields,
       EntryKind.scene => _sceneFields,
+      EntryKind.lore => _loreFields,
     };
 
 /// content 为 JSON map;旧版纯文本数据归入备注
