@@ -41,12 +41,10 @@ const _itemFields = [
 ];
 
 const _sceneFields = [
-  EntryField('time', '时间', '故事内时间点/时长'),
-  EntryField('characters', '出场人物', '在场角色及各自状态', 2),
-  EntryField('purpose', '场景目的', '这场戏推动什么(情节/人物/信息)', 2),
-  EntryField('conflict', '冲突/事件', '对抗、转折、意外', 3),
-  EntryField('mood', '情绪基调', '紧张 / 温情 / 诡异…'),
-  EntryField('summary', '情节概要', '这一场发生了什么', 5),
+  EntryField('position', '相对位置', '在所属地点中的方位,如:主殿西侧、地下三层、后山小径尽头'),
+  EntryField('description', '环境描写', '外观、陈设、光线、声音气味、氛围', 4),
+  EntryField('function', '用途/功能', '这里通常发生什么、谁会来', 2),
+  EntryField('details', '细节与机关', '值得注意的物件、暗门、禁制等', 3),
   EntryField('notes', '备注', '其他补充', 3),
 ];
 

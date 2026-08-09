@@ -44,7 +44,7 @@ enum EntryKind {
   character('人物', Icons.person_outline),
   location('地点', Icons.place_outlined),
   item('物品', Icons.category_outlined),
-  scene('场景', Icons.theaters_outlined);
+  scene('场景', Icons.pin_drop_outlined);
 
   const EntryKind(this.label, this.icon);
   final String label;
