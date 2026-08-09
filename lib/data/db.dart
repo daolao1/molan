@@ -119,6 +119,9 @@ class AppDatabase extends _$AppDatabase {
         ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)]))
       .watch();
 
+  Future<Novel?> novelById(int id) =>
+      (select(novels)..where((t) => t.id.equals(id))).getSingleOrNull();
+
   Future<int> createNovel(String title, String description) =>
       into(novels).insert(
           NovelsCompanion.insert(title: title, description: Value(description)));

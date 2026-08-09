@@ -81,6 +81,45 @@ ${_novelContext(allEntries, relations, links)}
 【事件大纲】$outline
 ${currentContent.trim().isEmpty ? '' : '【当前正文】\n${currentContent.trim()}\n'}${instruction.trim().isEmpty ? '' : '【额外要求】${instruction.trim()}\n'}''';
 
+/// 悬浮球助手:根据当前界面与用户指令生成设定变更集
+String assistantChangesSystem({bool withTools = false}) {
+  final toolNote = withTools
+      ? '\n- 作答前先用工具核实:get_entry_detail 查目标条目当前内容,list_entries 查有哪些条目;最多 4 次'
+      : '';
+  final kindFields = [
+    for (final kind in EntryKind.values)
+      '${kind.name}(${kind.label}):${entryFieldsFor(kind).map((f) => '"${f.key}"(${f.label})').join('、')}'
+  ].join('\n');
+  return '''
+你是小说设定库管理助手。根据【当前界面】与【用户指令】,对设定库提出增、删、改变更。
+
+输出要求:
+- 只输出一个 JSON 对象:{"changes":[{"action":"create|update|delete","kind":"类型","name":"条目名","fields":{…},"reason":"一句话说明"},…]}
+- kind 取值与各类型可用的 fields key:
+$kindFields
+- create:fields 给出完整内容;update:fields 只给需要修改的 key(增量);delete:不需要 fields
+- update/delete 的 name 必须与现有条目完全一致,禁止虚构不存在的条目
+- 只做用户指令要求的变更,不要顺手改无关内容;宁少勿滥
+- reason 用一句话解释该项变更的依据$toolNote
+- 全部中文
+''';
+}
+
+String assistantChangesUser({
+  required Novel novel,
+  required List<Entry> allEntries,
+  required List<CharacterRelation> relations,
+  required List<EntryLink> links,
+  required String pageDetail,
+  required String instruction,
+}) =>
+    '''
+【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
+${_novelContext(allEntries, relations, links)}
+【当前界面】$pageDetail
+【用户指令】$instruction
+''';
+
 /// AI 生成模式
 enum GenerationMode {
   /// 自由发挥,填满整张卡片

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/app_context.dart';
 import '../data/db.dart';
 import '../data/entry_fields.dart';
 import '../data/llm_client.dart';
@@ -65,7 +66,18 @@ class _EntryEditPageState extends State<EntryEditPage> {
     };
     if (widget.kind == EntryKind.character) _loadRelations();
     if (widget.kind == EntryKind.lore) _loadLinks();
+    AppContextRegistry.push(_ctxProvider);
   }
+
+  PageSnapshot _ctxProvider() => PageSnapshot(
+        novelId: widget.novel.id,
+        detail: '正在编辑《${widget.novel.title}》的${widget.kind.label}卡「${_nameCtrl.text}」。\n'
+            '已填内容:\n${[
+          for (final f in _fields)
+            if (_fieldCtrls[f.key]!.text.trim().isNotEmpty)
+              '${f.label}:${_fieldCtrls[f.key]!.text.trim()}'
+        ].join('\n')}',
+      );
 
   Future<void> _loadLinks() async {
     final all = await widget.db.allEntriesOf(widget.novel.id);
@@ -162,6 +174,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
 
   @override
   void dispose() {
+    AppContextRegistry.pop(_ctxProvider);
     _nameCtrl.dispose();
     _aiPromptCtrl.dispose();
     for (final c in _fieldCtrls.values) {

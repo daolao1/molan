@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/app_context.dart';
 import '../data/db.dart';
 import '../data/entry_fields.dart';
 import '../data/llm_client.dart';
@@ -37,8 +38,21 @@ class _NovelPageState extends State<NovelPage>
   /// 0 = 设定,1 = 写作,2 = 阅读
   int _section = 0;
 
+  PageSnapshot _ctxProvider() => PageSnapshot(
+        novelId: widget.novel.id,
+        detail:
+            '正在浏览《${widget.novel.title}》的${['设定', '写作', '阅读'][_section]}区',
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    AppContextRegistry.push(_ctxProvider);
+  }
+
   @override
   void dispose() {
+    AppContextRegistry.pop(_ctxProvider);
     _tab.dispose();
     _lorePromptCtrl.dispose();
     super.dispose();

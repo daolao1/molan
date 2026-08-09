@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/app_context.dart';
 import '../data/db.dart';
 import '../data/llm_client.dart';
 import '../data/novel_tools.dart';
@@ -37,8 +38,21 @@ class _EventEditPageState extends State<EventEditPage> {
   bool _generating = false;
   bool _dirty = false;
 
+  PageSnapshot _ctxProvider() => PageSnapshot(
+        novelId: widget.novel.id,
+        detail: '正在编辑《${widget.novel.title}》章节《${widget.chapter.title}》的事件。\n'
+            '事件大纲:${_outlineCtrl.text}\n当前正文:\n${_contentCtrl.text}',
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    AppContextRegistry.push(_ctxProvider);
+  }
+
   @override
   void dispose() {
+    AppContextRegistry.pop(_ctxProvider);
     _outlineCtrl.dispose();
     _contentCtrl.dispose();
     _aiCtrl.dispose();
