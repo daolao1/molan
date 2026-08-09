@@ -89,3 +89,18 @@ String entrySubtitle(Entry e) {
   }
   return '';
 }
+
+/// 拼接多字段的短摘要,供 LLM 上下文使用
+String entryBrief(Entry e, {int maxLen = 80}) {
+  final data = parseEntryContent(e.content);
+  final buf = StringBuffer();
+  for (final f in entryFieldsFor(EntryKind.values.byName(e.kind))) {
+    final v = data[f.key]?.replaceAll('\n', ' ').trim() ?? '';
+    if (v.isEmpty) continue;
+    if (buf.isNotEmpty) buf.write(';');
+    buf.write(v);
+    if (buf.length >= maxLen) break;
+  }
+  final s = buf.toString();
+  return s.length <= maxLen ? s : '${s.substring(0, maxLen)}…';
+}

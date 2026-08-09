@@ -91,14 +91,16 @@ class _EntryEditPageState extends State<EntryEditPage> {
     setState(() => _generating = true);
     try {
       final settings = await SettingsStore.load();
-      final names = await widget.db.entryNames(widget.novel.id, widget.kind);
+      final all = await widget.db.allEntriesOf(widget.novel.id);
+      final rels = await widget.db.relationsOfNovel(widget.novel.id);
       final reply = await LlmClient.chat(
         settings,
         system: entryGenerationSystem(widget.kind),
         user: entryGenerationUser(
           novel: widget.novel,
           kind: widget.kind,
-          existingNames: names,
+          allEntries: all,
+          relations: rels,
           currentName: _nameCtrl.text,
           currentData: {
             for (final e in _fieldCtrls.entries) e.key: e.value.text

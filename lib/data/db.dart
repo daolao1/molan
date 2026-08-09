@@ -98,12 +98,17 @@ class AppDatabase extends _$AppDatabase {
           name: name,
           content: Value(content)));
 
-  /// 同类型已有条目名(供 AI 生成时避免重名)
-  Future<List<String>> entryNames(int novelId, EntryKind kind) async {
-    final rows = await (select(entries)
-          ..where((t) => t.novelId.equals(novelId) & t.kind.equals(kind.name)))
-        .get();
-    return [for (final r in rows) r.name];
+  /// 本小说全部条目(供 AI 生成构建上下文)
+  Future<List<Entry>> allEntriesOf(int novelId) =>
+      (select(entries)..where((t) => t.novelId.equals(novelId))).get();
+
+  /// 本小说全部人物关系
+  Future<List<CharacterRelation>> relationsOfNovel(int novelId) async {
+    final q = select(characterRelations).join([
+      innerJoin(entries, entries.id.equalsExp(characterRelations.fromEntryId))
+    ])
+      ..where(entries.novelId.equals(novelId));
+    return [for (final r in await q.get()) r.readTable(characterRelations)];
   }
 
   Future<void> updateEntry(int id, String name, String content) =>
