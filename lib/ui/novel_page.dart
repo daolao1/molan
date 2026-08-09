@@ -34,7 +34,7 @@ class _NovelPageState extends State<NovelPage>
       MaterialPageRoute(
         builder: (_) => EntryEditPage(
           db: widget.db,
-          novelId: widget.novel.id,
+          novel: widget.novel,
           kind: entry == null ? _currentKind : EntryKind.values.byName(entry.kind),
           entry: entry,
         ),

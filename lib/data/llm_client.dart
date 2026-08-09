@@ -84,6 +84,57 @@ class LlmClient {
     }
   }
 
+  /// 对话补全,返回模型回复文本
+  static Future<String> chat(LlmSettings s,
+      {required String system, required String user}) async {
+    if (s.model.trim().isEmpty) {
+      throw LlmException('请先在设置中配置 LLM API 与模型');
+    }
+    try {
+      final resp = await http
+          .post(Uri.parse('${_base(s)}/chat/completions'),
+              headers: _headers(s),
+              body: jsonEncode({
+                'model': s.model.trim(),
+                'messages': [
+                  {'role': 'system', 'content': system},
+                  {'role': 'user', 'content': user},
+                ],
+              }))
+          .timeout(const Duration(seconds: 120));
+      if (resp.statusCode != 200) {
+        throw LlmException('HTTP ${resp.statusCode}:${_errorText(resp)}');
+      }
+      final data = jsonDecode(utf8.decode(resp.bodyBytes));
+      final content = data['choices']?[0]?['message']?['content'] as String?;
+      if (content == null || content.trim().isEmpty) {
+        throw LlmException('模型返回了空内容');
+      }
+      return content;
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  /// 从模型回复中提取 JSON 对象(容忍代码围栏与前后缀文本)
+  static Map<String, String> parseJsonReply(String text) {
+    final t = text.trim();
+    final start = t.indexOf('{');
+    final end = t.lastIndexOf('}');
+    if (start < 0 || end <= start) {
+      throw LlmException('模型未返回 JSON,请重试或换个模型');
+    }
+    try {
+      final d = jsonDecode(t.substring(start, end + 1)) as Map;
+      return {
+        for (final e in d.entries)
+          if (e.value != null) e.key.toString(): e.value.toString()
+      };
+    } catch (_) {
+      throw LlmException('模型返回的 JSON 无法解析,请重试');
+    }
+  }
+
   static String _errorText(http.Response resp) {
     try {
       final body = jsonDecode(utf8.decode(resp.bodyBytes));

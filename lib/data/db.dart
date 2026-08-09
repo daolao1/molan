@@ -85,6 +85,14 @@ class AppDatabase extends _$AppDatabase {
           name: name,
           content: Value(content)));
 
+  /// 同类型已有条目名(供 AI 生成时避免重名)
+  Future<List<String>> entryNames(int novelId, EntryKind kind) async {
+    final rows = await (select(entries)
+          ..where((t) => t.novelId.equals(novelId) & t.kind.equals(kind.name)))
+        .get();
+    return [for (final r in rows) r.name];
+  }
+
   Future<void> updateEntry(int id, String name, String content) =>
       (update(entries)..where((t) => t.id.equals(id))).write(EntriesCompanion(
           name: Value(name),
