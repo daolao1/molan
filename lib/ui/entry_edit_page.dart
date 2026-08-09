@@ -287,6 +287,8 @@ class _EntryEditPageState extends State<EntryEditPage> {
           : '已生成,请检查后接受或拒绝');
     } on LlmException catch (e) {
       _toast(e.message, error: true);
+    } catch (e) {
+      _toast('生成失败：$e', error: true);
     } finally {
       if (mounted) setState(() => _generating = false);
     }

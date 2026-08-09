@@ -165,6 +165,8 @@ class _NovelPageState extends State<NovelPage>
       }
     } on LlmException catch (e) {
       _toast(e.message, error: true);
+    } catch (e) {
+      _toast('生成失败：$e', error: true);
     } finally {
       if (mounted) setState(() => _bulkGenerating = false);
     }
