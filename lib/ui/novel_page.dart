@@ -8,6 +8,7 @@ import '../data/prompts.dart';
 import '../data/settings.dart';
 import 'chapters_page.dart';
 import 'entry_edit_page.dart';
+import 'reading_view.dart';
 
 class NovelPage extends StatefulWidget {
   const NovelPage({super.key, required this.db, required this.novel});
@@ -33,7 +34,7 @@ class _NovelPageState extends State<NovelPage>
   bool _bulkGenerating = false;
   final _lorePromptCtrl = TextEditingController();
 
-  /// 0 = 设定,1 = 写作
+  /// 0 = 设定,1 = 写作,2 = 阅读
   int _section = 0;
 
   @override
@@ -178,11 +179,11 @@ class _NovelPageState extends State<NovelPage>
 
   @override
   Widget build(BuildContext context) {
-    final isWriting = _section == 1;
+    const names = ['设定', '写作', '阅读'];
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.novel.title} · ${isWriting ? '写作' : '设定'}'),
-        bottom: isWriting
+        title: Text('${widget.novel.title} · ${names[_section]}'),
+        bottom: _section != 0
             ? null
             : TabBar(
                 controller: _tab,
@@ -194,22 +195,24 @@ class _NovelPageState extends State<NovelPage>
       body: Row(
         children: [
           Expanded(
-            child: isWriting
-                ? ChaptersView(db: widget.db, novel: widget.novel)
-                : TabBarView(
-                    controller: _tab,
-                    children: [
-                      for (final kind in _kinds)
-                        _EntryList(
-                            db: widget.db,
-                            novelId: widget.novel.id,
-                            kind: kind,
-                            header: kind == EntryKind.lore
-                                ? _loreGeneratorCard()
-                                : null,
-                            onTapEntry: (e) => _openEditor(entry: e)),
-                    ],
-                  ),
+            child: switch (_section) {
+              1 => ChaptersView(db: widget.db, novel: widget.novel),
+              2 => ReadingView(db: widget.db, novel: widget.novel),
+              _ => TabBarView(
+                  controller: _tab,
+                  children: [
+                    for (final kind in _kinds)
+                      _EntryList(
+                          db: widget.db,
+                          novelId: widget.novel.id,
+                          kind: kind,
+                          header: kind == EntryKind.lore
+                              ? _loreGeneratorCard()
+                              : null,
+                          onTapEntry: (e) => _openEditor(entry: e)),
+                  ],
+                ),
+            },
           ),
           const VerticalDivider(width: 1),
           NavigationRail(
@@ -226,25 +229,31 @@ class _NovelPageState extends State<NovelPage>
                   icon: Icon(Icons.edit_note_outlined),
                   selectedIcon: Icon(Icons.edit_note),
                   label: Text('写作')),
+              NavigationRailDestination(
+                  icon: Icon(Icons.menu_book_outlined),
+                  selectedIcon: Icon(Icons.menu_book),
+                  label: Text('阅读')),
             ],
           ),
         ],
       ),
-      floatingActionButton: isWriting
-          ? FloatingActionButton.extended(
-              onPressed: () =>
-                  showChapterDialog(context, widget.db, widget.novel),
+      floatingActionButton: switch (_section) {
+        1 => FloatingActionButton.extended(
+            onPressed: () =>
+                showChapterDialog(context, widget.db, widget.novel),
+            icon: const Icon(Icons.add),
+            label: const Text('新建章节'),
+          ),
+        2 => null,
+        _ => AnimatedBuilder(
+            animation: _tab,
+            builder: (context, _) => FloatingActionButton.extended(
+              onPressed: () => _openEditor(),
               icon: const Icon(Icons.add),
-              label: const Text('新建章节'),
-            )
-          : AnimatedBuilder(
-              animation: _tab,
-              builder: (context, _) => FloatingActionButton.extended(
-                onPressed: () => _openEditor(),
-                icon: const Icon(Icons.add),
-                label: Text('新建${_currentKind.label}'),
-              ),
+              label: Text('新建${_currentKind.label}'),
             ),
+          ),
+      },
     );
   }
 
