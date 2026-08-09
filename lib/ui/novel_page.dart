@@ -6,6 +6,7 @@ import '../data/llm_client.dart';
 import '../data/novel_tools.dart';
 import '../data/prompts.dart';
 import '../data/settings.dart';
+import 'chapters_page.dart';
 import 'entry_edit_page.dart';
 
 class NovelPage extends StatefulWidget {
@@ -177,6 +178,18 @@ class _NovelPageState extends State<NovelPage>
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.novel.title),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_note),
+            tooltip: '写作',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) =>
+                      ChaptersPage(db: widget.db, novel: widget.novel)),
+            ),
+          ),
+        ],
         bottom: TabBar(
           controller: _tab,
           tabs: [for (final k in _kinds) Tab(text: k.label, icon: Icon(k.icon))],

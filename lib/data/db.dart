@@ -49,6 +49,27 @@ class EntryLinks extends Table {
       integer().references(Entries, #id, onDelete: KeyAction.cascade)();
 }
 
+/// 章节:只有标题,内容由事件拼接
+class Chapters extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get novelId =>
+      integer().references(Novels, #id, onDelete: KeyAction.cascade)();
+  TextColumn get title => text()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// 章节内的事件:大纲驱动正文
+class ChapterEvents extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get chapterId =>
+      integer().references(Chapters, #id, onDelete: KeyAction.cascade)();
+  TextColumn get outline => text().withDefault(const Constant(''))();
+  TextColumn get content => text().withDefault(const Constant(''))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
 enum EntryKind {
   character('人物', Icons.person_outline),
   location('地点', Icons.place_outlined),
@@ -61,7 +82,8 @@ enum EntryKind {
   final IconData icon;
 }
 
-@DriftDatabase(tables: [Novels, Entries, CharacterRelations, EntryLinks])
+@DriftDatabase(
+    tables: [Novels, Entries, CharacterRelations, EntryLinks, Chapters, ChapterEvents])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
       : super(executor ??
@@ -74,7 +96,7 @@ class AppDatabase extends _$AppDatabase {
             ));
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -82,6 +104,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 2) await m.createTable(characterRelations);
           if (from < 3) await m.addColumn(entries, entries.parentId);
           if (from < 4) await m.createTable(entryLinks);
+          if (from < 5) {
+            await m.createTable(chapters);
+            await m.createTable(chapterEvents);
+          }
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
@@ -162,6 +188,50 @@ class AppDatabase extends _$AppDatabase {
         }
       });
 
+  // ---- 章节与事件 ----
+  Stream<List<Chapter>> watchChapters(int novelId) => (select(chapters)
+        ..where((t) => t.novelId.equals(novelId))
+        ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+      .watch();
+
+  Future<int> createChapter(int novelId, String title) =>
+      into(chapters).insert(
+          ChaptersCompanion.insert(novelId: novelId, title: title));
+
+  Future<void> renameChapter(int id, String title) =>
+      (update(chapters)..where((t) => t.id.equals(id))).write(
+          ChaptersCompanion(
+              title: Value(title), updatedAt: Value(DateTime.now())));
+
+  Future<void> deleteChapter(int id) =>
+      (delete(chapters)..where((t) => t.id.equals(id))).go();
+
+  Stream<List<ChapterEvent>> watchEvents(int chapterId) =>
+      (select(chapterEvents)
+            ..where((t) => t.chapterId.equals(chapterId))
+            ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+          .watch();
+
+  Future<List<ChapterEvent>> eventsOf(int chapterId) => (select(chapterEvents)
+        ..where((t) => t.chapterId.equals(chapterId))
+        ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+      .get();
+
+  Future<int> createEvent(int chapterId, String outline) =>
+      into(chapterEvents).insert(ChapterEventsCompanion.insert(
+          chapterId: chapterId, outline: Value(outline)));
+
+  Future<void> updateEvent(int id, {String? outline, String? content}) =>
+      (update(chapterEvents)..where((t) => t.id.equals(id)))
+          .write(ChapterEventsCompanion(
+        outline: outline == null ? const Value.absent() : Value(outline),
+        content: content == null ? const Value.absent() : Value(content),
+        updatedAt: Value(DateTime.now()),
+      ));
+
+  Future<void> deleteEvent(int id) =>
+      (delete(chapterEvents)..where((t) => t.id.equals(id))).go();
+
   Future<void> updateEntry(int id, String name, String content) =>
       (update(entries)..where((t) => t.id.equals(id))).write(EntriesCompanion(
           name: Value(name),
@@ -208,6 +278,8 @@ class AppDatabase extends _$AppDatabase {
     List<({String kind, String name, String content, int? parent})> entryRows,
     List<({int from, int to, String label})> relRows,
     List<({int from, int to})> linkRows,
+    List<({String title, List<({String outline, String content})> events})>
+        chapterRows,
   ) =>
       transaction(() async {
         final novelId = await createNovel(title, description);
@@ -241,6 +313,15 @@ class AppDatabase extends _$AppDatabase {
           if (l.to < 0 || l.to >= ids.length) continue;
           await into(entryLinks).insert(EntryLinksCompanion.insert(
               fromEntryId: ids[l.from], toEntryId: ids[l.to]));
+        }
+        for (final c in chapterRows) {
+          final chapterId = await createChapter(novelId, c.title);
+          for (final e in c.events) {
+            final eventId = await createEvent(chapterId, e.outline);
+            if (e.content.isNotEmpty) {
+              await updateEvent(eventId, content: e.content);
+            }
+          }
         }
         return novelId;
       });

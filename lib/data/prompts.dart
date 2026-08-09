@@ -4,6 +4,46 @@ library;
 import 'db.dart';
 import 'entry_fields.dart';
 
+/// 事件正文生成的系统提示词
+String eventContentSystem({bool withTools = false}) {
+  final toolNote = withTools
+      ? '\n- 动笔前可用工具检索设定细节(get_entry_detail / list_entries / get_relations),最多 4 次,确保人物言行、地点、规则与设定一致'
+      : '';
+  return '''
+你是这部小说的作者,负责把事件大纲扩写成正文。
+
+写作要求:
+- 只输出正文文本:不要标题、序号、解释或任何 markdown 标记
+- 中文写作,叙事流畅,画面感强,善用对话与细节,贴合小说整体风格
+- 严格按【事件大纲】展开,不要引入大纲之外的重大情节或新设定
+- 与【现有设定】保持一致,人物性格言行不可 OOC$toolNote
+- 与【前文结尾】自然衔接,不复述前文
+- 若提供了【当前正文】,以它为基础按大纲和要求修改完善,保留可用的原文
+- 篇幅约 400~800 字,大纲中另有篇幅要求时以大纲为准
+''';
+}
+
+/// 事件正文生成的用户消息
+String eventContentUser({
+  required Novel novel,
+  required List<Entry> allEntries,
+  required List<CharacterRelation> relations,
+  required List<EntryLink> links,
+  required String chapterTitle,
+  required List<String> priorOutlines,
+  required String prevContentTail,
+  required String outline,
+  required String currentContent,
+}) =>
+    '''
+【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
+${_novelContext(allEntries, relations, links)}
+【当前章节】$chapterTitle
+【本章此前事件大纲】${priorOutlines.isEmpty ? '(本事件是本章第一个事件)' : '\n${priorOutlines.map((o) => '- $o').join('\n')}'}
+【前文结尾】${prevContentTail.isEmpty ? '(无)' : '\n…$prevContentTail'}
+【事件大纲】$outline
+${currentContent.trim().isEmpty ? '' : '【当前正文】\n${currentContent.trim()}\n'}''';
+
 /// AI 生成模式
 enum GenerationMode {
   /// 自由发挥,填满整张卡片

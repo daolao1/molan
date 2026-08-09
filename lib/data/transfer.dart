@@ -14,9 +14,20 @@ class NovelTransfer {
     final entries = await db.allEntriesOf(novel.id);
     final rels = await db.relationsOfNovel(novel.id);
     final links = await db.linksOfNovel(novel.id);
+    final chapterRows = await db.watchChapters(novel.id).first;
     final indexOf = {
       for (var i = 0; i < entries.length; i++) entries[i].id: i
     };
+    final chapterData = [
+      for (final c in chapterRows)
+        {
+          'title': c.title,
+          'events': [
+            for (final e in await db.eventsOf(c.id))
+              {'outline': e.outline, 'content': e.content}
+          ],
+        }
+    ];
     return const JsonEncoder.withIndent('  ').convert({
       'molan_export': _formatVersion,
       'novel': {'title': novel.title, 'description': novel.description},
@@ -46,6 +57,7 @@ class NovelTransfer {
               indexOf.containsKey(l.toEntryId))
             {'from': indexOf[l.fromEntryId], 'to': indexOf[l.toEntryId]}
       ],
+      'chapters': chapterData,
     });
   }
 
@@ -109,8 +121,23 @@ class NovelTransfer {
         if (l is Map && l['from'] is int && l['to'] is int)
           (from: l['from'] as int, to: l['to'] as int)
     ];
+    final chapterRows = [
+      for (final c in (data['chapters'] as List? ?? []))
+        if (c is Map && (c['title'] as String?)?.isNotEmpty == true)
+          (
+            title: c['title'] as String,
+            events: [
+              for (final e in (c['events'] as List? ?? []))
+                if (e is Map)
+                  (
+                    outline: e['outline'] as String? ?? '',
+                    content: e['content'] as String? ?? '',
+                  )
+            ],
+          )
+    ];
     await db.importNovel(title, novel['description'] as String? ?? '',
-        entryRows, relRows, linkRows);
+        entryRows, relRows, linkRows, chapterRows);
     return title;
   }
 }
