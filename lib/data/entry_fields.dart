@@ -20,7 +20,6 @@ const _characterFields = [
   EntryField('background', '背景经历', '出身与重要过往', 4),
   EntryField('motivation', '动机与目标', '想要什么、害怕什么、为何而行动', 3),
   EntryField('abilities', '能力/特长', '功法、技能、天赋、装备', 3),
-  EntryField('relations', '人物关系', '与其他角色的关系及态度', 3),
   EntryField('arc', '成长弧线', '这个角色在故事中如何变化', 3),
   EntryField('notes', '备注', '其他补充', 3),
 ];

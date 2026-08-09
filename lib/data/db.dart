@@ -25,6 +25,16 @@ class Entries extends Table {
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// 人物间关系(有向:from → to)
+class CharacterRelations extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get fromEntryId =>
+      integer().references(Entries, #id, onDelete: KeyAction.cascade)();
+  IntColumn get toEntryId =>
+      integer().references(Entries, #id, onDelete: KeyAction.cascade)();
+  TextColumn get label => text()();
+}
+
 enum EntryKind {
   character('人物', Icons.person_outline),
   location('地点', Icons.place_outlined),
@@ -36,7 +46,7 @@ enum EntryKind {
   final IconData icon;
 }
 
-@DriftDatabase(tables: [Novels, Entries])
+@DriftDatabase(tables: [Novels, Entries, CharacterRelations])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
       : super(executor ??
@@ -49,10 +59,13 @@ class AppDatabase extends _$AppDatabase {
             ));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+        onUpgrade: (m, from, to) async {
+          if (from < 2) await m.createTable(characterRelations);
+        },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
         },
@@ -101,4 +114,34 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> deleteEntry(int id) =>
       (delete(entries)..where((t) => t.id.equals(id))).go();
+
+  // ---- 人物关系 ----
+  /// 本小说全部人物(供关系选择器)
+  Future<List<Entry>> charactersOf(int novelId) => (select(entries)
+        ..where((t) =>
+            t.novelId.equals(novelId) &
+            t.kind.equals(EntryKind.character.name))
+        ..orderBy([(t) => OrderingTerm.asc(t.name)]))
+      .get();
+
+  Future<List<CharacterRelation>> relationsFrom(int entryId) =>
+      (select(characterRelations)..where((t) => t.fromEntryId.equals(entryId)))
+          .get();
+
+  Future<List<CharacterRelation>> relationsTo(int entryId) =>
+      (select(characterRelations)..where((t) => t.toEntryId.equals(entryId)))
+          .get();
+
+  /// 重写某人物发起的全部关系
+  Future<void> replaceRelationsFrom(
+      int entryId, List<({int toId, String label})> rels) =>
+      transaction(() async {
+        await (delete(characterRelations)
+              ..where((t) => t.fromEntryId.equals(entryId)))
+            .go();
+        for (final r in rels) {
+          await into(characterRelations).insert(CharacterRelationsCompanion
+              .insert(fromEntryId: entryId, toEntryId: r.toId, label: r.label));
+        }
+      });
 }
