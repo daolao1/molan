@@ -180,6 +180,25 @@ class _NovelPageState extends State<NovelPage>
   @override
   Widget build(BuildContext context) {
     const names = ['设定', '写作', '阅读'];
+    // 窄屏(手机)用底部导航,宽屏用右侧栏
+    final narrow = MediaQuery.sizeOf(context).width < 600;
+    final content = switch (_section) {
+      1 => ChaptersView(db: widget.db, novel: widget.novel),
+      2 => ReadingView(db: widget.db, novel: widget.novel),
+      _ => TabBarView(
+          controller: _tab,
+          children: [
+            for (final kind in _kinds)
+              _EntryList(
+                  db: widget.db,
+                  novelId: widget.novel.id,
+                  kind: kind,
+                  header:
+                      kind == EntryKind.lore ? _loreGeneratorCard() : null,
+                  onTapEntry: (e) => _openEditor(entry: e)),
+          ],
+        ),
+    };
     return Scaffold(
       appBar: AppBar(
         title: Text('${widget.novel.title} · ${names[_section]}'),
@@ -192,51 +211,54 @@ class _NovelPageState extends State<NovelPage>
                 ],
               ),
       ),
-      body: Row(
-        children: [
-          Expanded(
-            child: switch (_section) {
-              1 => ChaptersView(db: widget.db, novel: widget.novel),
-              2 => ReadingView(db: widget.db, novel: widget.novel),
-              _ => TabBarView(
-                  controller: _tab,
-                  children: [
-                    for (final kind in _kinds)
-                      _EntryList(
-                          db: widget.db,
-                          novelId: widget.novel.id,
-                          kind: kind,
-                          header: kind == EntryKind.lore
-                              ? _loreGeneratorCard()
-                              : null,
-                          onTapEntry: (e) => _openEditor(entry: e)),
+      body: narrow
+          ? content
+          : Row(
+              children: [
+                Expanded(child: content),
+                const VerticalDivider(width: 1),
+                NavigationRail(
+                  selectedIndex: _section,
+                  onDestinationSelected: (i) => setState(() => _section = i),
+                  labelType: NavigationRailLabelType.all,
+                  minWidth: 64,
+                  destinations: const [
+                    NavigationRailDestination(
+                        icon: Icon(Icons.category_outlined),
+                        selectedIcon: Icon(Icons.category),
+                        label: Text('设定')),
+                    NavigationRailDestination(
+                        icon: Icon(Icons.edit_note_outlined),
+                        selectedIcon: Icon(Icons.edit_note),
+                        label: Text('写作')),
+                    NavigationRailDestination(
+                        icon: Icon(Icons.menu_book_outlined),
+                        selectedIcon: Icon(Icons.menu_book),
+                        label: Text('阅读')),
                   ],
                 ),
-            },
-          ),
-          const VerticalDivider(width: 1),
-          NavigationRail(
-            selectedIndex: _section,
-            onDestinationSelected: (i) => setState(() => _section = i),
-            labelType: NavigationRailLabelType.all,
-            minWidth: 64,
-            destinations: const [
-              NavigationRailDestination(
-                  icon: Icon(Icons.category_outlined),
-                  selectedIcon: Icon(Icons.category),
-                  label: Text('设定')),
-              NavigationRailDestination(
-                  icon: Icon(Icons.edit_note_outlined),
-                  selectedIcon: Icon(Icons.edit_note),
-                  label: Text('写作')),
-              NavigationRailDestination(
-                  icon: Icon(Icons.menu_book_outlined),
-                  selectedIcon: Icon(Icons.menu_book),
-                  label: Text('阅读')),
-            ],
-          ),
-        ],
-      ),
+              ],
+            ),
+      bottomNavigationBar: !narrow
+          ? null
+          : NavigationBar(
+              selectedIndex: _section,
+              onDestinationSelected: (i) => setState(() => _section = i),
+              destinations: const [
+                NavigationDestination(
+                    icon: Icon(Icons.category_outlined),
+                    selectedIcon: Icon(Icons.category),
+                    label: '设定'),
+                NavigationDestination(
+                    icon: Icon(Icons.edit_note_outlined),
+                    selectedIcon: Icon(Icons.edit_note),
+                    label: '写作'),
+                NavigationDestination(
+                    icon: Icon(Icons.menu_book_outlined),
+                    selectedIcon: Icon(Icons.menu_book),
+                    label: '阅读'),
+              ],
+            ),
       floatingActionButton: switch (_section) {
         1 => FloatingActionButton.extended(
             onPressed: () =>
