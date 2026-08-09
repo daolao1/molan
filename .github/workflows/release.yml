@@ -52,6 +52,8 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter build macos --release
+      # 无开发者证书,ad-hoc 签名保证 Apple Silicon 可运行;用户首次打开需 xattr 去隔离
+      - run: codesign --force --deep -s - build/macos/Build/Products/Release/molan.app
       - run: ditto -c -k --keepParent build/macos/Build/Products/Release/molan.app molan-${{ github.ref_name }}-macos.zip
       - uses: softprops/action-gh-release@v2
         with:

@@ -1,54 +1,38 @@
 # 墨澜 (Molan)
 
-小说写作辅助 Agent —— 帮你完成大纲规划、人物设定、世界观管理、章节续写与润色改稿。
+小说写作辅助应用 —— 管理小说的人物、地点、物品、场景设定,配置你自己的 LLM API 辅助创作。Flutter 构建,一套代码覆盖 Android / iOS / Windows / macOS / Linux。
 
 ## 功能
 
-- **大纲规划**:三幕/多卷结构梳理,章节节奏安排
-- **人物设定**:人物卡管理,性格、动机、成长弧线
-- **世界观管理**:设定集维护,避免前后矛盾
-- **续写与润色**:遵循既有文风续写,提供改稿建议
-- **一致性检查**:伏笔、时间线、称谓的前后一致性
+- **小说管理**:多本小说,书名与简介
+- **设定管理**:每本小说下的人物 / 地点 / 物品 / 场景卡片
+- **LLM 接入**:设置页配置兼容 OpenAI 格式的 Base URL / API Key / 模型
 
 ## 安装
 
-### 工作区级(推荐,随项目走)
+从 [Releases](https://github.com/daolao1/molan/releases) 下载对应平台安装包。
 
-将 [.github/agents/molan.agent.md](.github/agents/molan.agent.md) 复制到你的小说项目:
+### macOS 提示“已损坏”或被拦截？
 
-```bash
-mkdir -p <你的项目>/.github/agents
-cp .github/agents/molan.agent.md <你的项目>/.github/agents/
-```
-
-### 用户级(跨项目可用)
-
-复制到 VS Code 用户 prompts 目录(macOS):
+安装包未经 Apple 公证（需付费开发者账号），下载后首次打开会被 Gatekeeper 拦截。解除方法，二选一：
 
 ```bash
-cp .github/agents/molan.agent.md "$HOME/Library/Application Support/Code/User/prompts/"
+# 方法一：移除隔离属性（路径按实际调整）
+xattr -cr /Applications/molan.app
 ```
 
-## 使用
+方法二：打开被拦后，去 **系统设置 → 隐私与安全性**，拉到底部点 **仍要打开**。
 
-在 VS Code Copilot Chat 的 agent 选择器中选择 **墨澜**,或直接对话:
+仅首次需要，之后正常使用。
 
-- "帮我规划一部东方玄幻的三卷大纲"
-- "给主角写一张人物卡"
-- "续写第 12 章,保持现有文风"
-- "检查前 10 章里关于'青霜剑'的设定是否一致"
+## 开发
 
-## 约定的项目结构
-
-墨澜按以下结构管理小说素材(不存在时会引导创建):
-
+```bash
+flutter pub get
+flutter run -d macos   # 或 -d <其他设备>
 ```
-novel/
-├── outline.md        # 总大纲
-├── worldbuilding.md  # 世界观设定集
-├── characters/       # 人物卡(每人一个文件)
-└── chapters/         # 正文章节
-```
+
+发版：改 pubspec.yaml 的 version → commit → 打 `vX.Y.Z` tag 推送，CI 自动构建四端产物挂到 Releases。
 
 ## License
 
