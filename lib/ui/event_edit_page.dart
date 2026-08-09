@@ -33,6 +33,7 @@ class _EventEditPageState extends State<EventEditPage> {
       TextEditingController(text: widget.event?.outline ?? '');
   late final _contentCtrl =
       TextEditingController(text: widget.event?.content ?? '');
+  final _aiCtrl = TextEditingController();
   bool _generating = false;
   bool _dirty = false;
 
@@ -40,6 +41,7 @@ class _EventEditPageState extends State<EventEditPage> {
   void dispose() {
     _outlineCtrl.dispose();
     _contentCtrl.dispose();
+    _aiCtrl.dispose();
     super.dispose();
   }
 
@@ -65,6 +67,80 @@ class _EventEditPageState extends State<EventEditPage> {
     return '';
   }
 
+  Future<({
+    LlmSettings settings,
+    List<Entry> all,
+    List<CharacterRelation> rels,
+    List<EntryLink> links
+  })> _loadContext() async {
+    final settings = await SettingsStore.load();
+    final all = await widget.db.allEntriesOf(widget.novel.id);
+    final rels = await widget.db.relationsOfNovel(widget.novel.id);
+    final links = await widget.db.linksOfNovel(widget.novel.id);
+    return (settings: settings, all: all, rels: rels, links: links);
+  }
+
+  List<String> get _priorOutlines => [
+        for (final e in widget.priorEvents)
+          if (e.outline.trim().isNotEmpty) e.outline.trim()
+      ];
+
+  Future<String> _chat(LlmSettings settings,
+      {required String system, required String user}) async {
+    try {
+      return await LlmClient.chatWithTools(
+        settings,
+        system: system,
+        user: user,
+        tools: novelToolSchemas,
+        onToolCall: NovelToolExecutor(widget.db, widget.novel.id).call,
+      );
+    } on ToolsUnsupportedException {
+      return await LlmClient.chat(settings, system: system, user: user);
+    }
+  }
+
+  /// 按指令生成/微调大纲
+  Future<void> _generateOutline() async {
+    final instruction = _aiCtrl.text.trim();
+    if (instruction.isEmpty) {
+      _toast('先在 AI 指令框写下想法,如:主角在雨夜遭伏,发现对方是故人', error: true);
+      return;
+    }
+    setState(() => _generating = true);
+    try {
+      final ctx = await _loadContext();
+      final reply = await _chat(
+        ctx.settings,
+        system: eventOutlineSystem(withTools: true),
+        user: eventOutlineUser(
+          novel: widget.novel,
+          allEntries: ctx.all,
+          relations: ctx.rels,
+          links: ctx.links,
+          chapterTitle: widget.chapter.title,
+          priorOutlines: _priorOutlines,
+          currentOutline: _outlineCtrl.text,
+          instruction: instruction,
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _outlineCtrl.text = reply.trim();
+        _aiCtrl.clear();
+        _dirty = true;
+      });
+      _toast('大纲已生成,可微调后再生成正文');
+    } on LlmException catch (e) {
+      _toast(e.message, error: true);
+    } catch (e) {
+      _toast('生成失败：$e', error: true);
+    } finally {
+      if (mounted) setState(() => _generating = false);
+    }
+  }
+
+  /// 按大纲(+可选指令)生成/微调正文
   Future<void> _generate() async {
     final outline = _outlineCtrl.text.trim();
     if (outline.isEmpty) {
@@ -73,40 +149,27 @@ class _EventEditPageState extends State<EventEditPage> {
     }
     setState(() => _generating = true);
     try {
-      final settings = await SettingsStore.load();
-      final all = await widget.db.allEntriesOf(widget.novel.id);
-      final rels = await widget.db.relationsOfNovel(widget.novel.id);
-      final links = await widget.db.linksOfNovel(widget.novel.id);
-      final userMsg = eventContentUser(
-        novel: widget.novel,
-        allEntries: all,
-        relations: rels,
-        links: links,
-        chapterTitle: widget.chapter.title,
-        priorOutlines: [
-          for (final e in widget.priorEvents)
-            if (e.outline.trim().isNotEmpty) e.outline.trim()
-        ],
-        prevContentTail: _prevTail,
-        outline: outline,
-        currentContent: _contentCtrl.text,
+      final ctx = await _loadContext();
+      final reply = await _chat(
+        ctx.settings,
+        system: eventContentSystem(withTools: true),
+        user: eventContentUser(
+          novel: widget.novel,
+          allEntries: ctx.all,
+          relations: ctx.rels,
+          links: ctx.links,
+          chapterTitle: widget.chapter.title,
+          priorOutlines: _priorOutlines,
+          prevContentTail: _prevTail,
+          outline: outline,
+          currentContent: _contentCtrl.text,
+          instruction: _aiCtrl.text,
+        ),
       );
-      String reply;
-      try {
-        reply = await LlmClient.chatWithTools(
-          settings,
-          system: eventContentSystem(withTools: true),
-          user: userMsg,
-          tools: novelToolSchemas,
-          onToolCall: NovelToolExecutor(widget.db, widget.novel.id).call,
-        );
-      } on ToolsUnsupportedException {
-        reply = await LlmClient.chat(settings,
-            system: eventContentSystem(), user: userMsg);
-      }
       if (!mounted) return;
       setState(() {
         _contentCtrl.text = reply.trim();
+        _aiCtrl.clear();
         _dirty = true;
       });
       _toast('正文已生成,可微调后保存');
@@ -194,15 +257,34 @@ class _EventEditPageState extends State<EventEditPage> {
               ),
             ),
             Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: TextField(
+                controller: _aiCtrl,
+                minLines: 1,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'AI 指令(可选)',
+                  hintText: '写大纲:描述情节想法;改正文:如“把气氛写得更压抑”',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+            Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
-                      '正文按大纲生成;已有正文时按大纲修改完善',
+                      '指令驱动大纲;大纲(+指令)驱动正文',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
+                  OutlinedButton.icon(
+                    onPressed: _generating ? null : _generateOutline,
+                    icon: const Icon(Icons.notes, size: 18),
+                    label: const Text('写大纲'),
+                  ),
+                  const SizedBox(width: 8),
                   FilledButton.tonalIcon(
                     onPressed: _generating ? null : _generate,
                     icon: _generating
@@ -211,7 +293,7 @@ class _EventEditPageState extends State<EventEditPage> {
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.auto_awesome),
-                    label: Text(_generating ? '生成中…' : '生成正文'),
+                    label: Text(_generating ? '生成中…' : '写正文'),
                   ),
                 ],
               ),

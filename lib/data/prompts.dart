@@ -4,6 +4,42 @@ library;
 import 'db.dart';
 import 'entry_fields.dart';
 
+/// 事件大纲生成/微调的系统提示词
+String eventOutlineSystem({bool withTools = false}) {
+  final toolNote = withTools
+      ? '\n- 可用工具检索设定细节(get_entry_detail / list_entries / get_relations),最多 3 次'
+      : '';
+  return '''
+你是这部小说的作者,负责撰写或修改单个事件的大纲。
+
+要求:
+- 只输出大纲文本,不要任何解释、标题或序号
+- 大纲是一段 30~100 字的情节概述:谁、在哪、做什么、结果/转折
+- 严格围绕【作者指令】展开;若已有【当前大纲】,在其基础上按指令修改,保留未涉及的要点
+- 与【本章此前事件大纲】情节连贯,不重复;与【现有设定】一致$toolNote
+- 中文撰写
+''';
+}
+
+/// 事件大纲生成的用户消息
+String eventOutlineUser({
+  required Novel novel,
+  required List<Entry> allEntries,
+  required List<CharacterRelation> relations,
+  required List<EntryLink> links,
+  required String chapterTitle,
+  required List<String> priorOutlines,
+  required String currentOutline,
+  required String instruction,
+}) =>
+    '''
+【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
+${_novelContext(allEntries, relations, links)}
+【当前章节】$chapterTitle
+【本章此前事件大纲】${priorOutlines.isEmpty ? '(无)' : '\n${priorOutlines.map((o) => '- $o').join('\n')}'}
+${currentOutline.trim().isEmpty ? '' : '【当前大纲】\n${currentOutline.trim()}\n'}【作者指令】$instruction
+''';
+
 /// 事件正文生成的系统提示词
 String eventContentSystem({bool withTools = false}) {
   final toolNote = withTools
@@ -34,6 +70,7 @@ String eventContentUser({
   required String prevContentTail,
   required String outline,
   required String currentContent,
+  String instruction = '',
 }) =>
     '''
 【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
@@ -42,7 +79,7 @@ ${_novelContext(allEntries, relations, links)}
 【本章此前事件大纲】${priorOutlines.isEmpty ? '(本事件是本章第一个事件)' : '\n${priorOutlines.map((o) => '- $o').join('\n')}'}
 【前文结尾】${prevContentTail.isEmpty ? '(无)' : '\n…$prevContentTail'}
 【事件大纲】$outline
-${currentContent.trim().isEmpty ? '' : '【当前正文】\n${currentContent.trim()}\n'}''';
+${currentContent.trim().isEmpty ? '' : '【当前正文】\n${currentContent.trim()}\n'}${instruction.trim().isEmpty ? '' : '【额外要求】${instruction.trim()}\n'}''';
 
 /// AI 生成模式
 enum GenerationMode {
