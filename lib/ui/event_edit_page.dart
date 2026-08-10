@@ -93,7 +93,11 @@ class _ChatMsg {
 
 class _EventEditPageState extends State<EventEditPage>
     with SingleTickerProviderStateMixin {
-  late final TabController _tab = TabController(length: 2, vsync: this);
+  // 切到对话页时自动滚到最新记录
+  late final TabController _tab = TabController(length: 2, vsync: this)
+    ..addListener(() {
+      if (_tab.index == 1) _scrollChat();
+    });
   late final _outlineCtrl =
       TextEditingController(text: widget.event?.outline ?? '');
   late final _contentCtrl =
@@ -795,9 +799,14 @@ class _EventEditPageState extends State<EventEditPage>
 
   void _scrollChat() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_chatScroll.hasClients) {
-        _chatScroll.jumpTo(_chatScroll.position.maxScrollExtent);
-      }
+      if (!_chatScroll.hasClients) return;
+      _chatScroll.jumpTo(_chatScroll.position.maxScrollExtent);
+      // 长内容(Markdown/卡片)常多帧才完成布局,再校正一次
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_chatScroll.hasClients) {
+          _chatScroll.jumpTo(_chatScroll.position.maxScrollExtent);
+        }
+      });
     });
   }
 
