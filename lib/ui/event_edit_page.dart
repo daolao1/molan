@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
+import 'dart:convert';
+
 import '../data/app_context.dart';
 import '../data/db.dart';
 import '../data/llm_client.dart';
@@ -106,6 +108,74 @@ class _EventEditPageState extends State<EventEditPage>
   void initState() {
     super.initState();
     AppContextRegistry.push(_ctxProvider);
+    _restoreChat();
+  }
+
+  /// 恢复持久化的对话;system 背景可能过期,下次发送前重建
+  bool _systemStale = false;
+
+  void _restoreChat() {
+    final raw = widget.event?.chatLog ?? '';
+    if (raw.trim().isEmpty) return;
+    try {
+      final data = jsonDecode(raw);
+      if (data is! Map) return;
+      final msgs = data['messages'];
+      if (msgs is List) {
+        _messages.addAll([
+          for (final m in msgs)
+            if (m is Map) m.cast<String, dynamic>()
+        ]);
+        _systemStale = _messages.isNotEmpty;
+      }
+      final ui = data['ui'];
+      if (ui is List) {
+        for (final m in ui) {
+          if (m is! Map) continue;
+          final text = m['text']?.toString() ?? '';
+          switch (m['t']) {
+            case 'user':
+              _chatUi.add(_ChatMsg(true, text));
+            case 'ai':
+              _chatUi.add(_ChatMsg(false, text));
+            case 'tool':
+              _chatUi.add(_ChatMsg.tool(text));
+            case 'change':
+              _chatUi.add(_ChatMsg.change(text, null)
+                ..reviewed = m['reviewed'] is bool ? m['reviewed'] as bool : true);
+          }
+        }
+      }
+    } catch (_) {
+      // 损坏的历史不阻断页面
+    }
+  }
+
+  String _encodeChat() => jsonEncode({
+        'messages': _messages,
+        'ui': [
+          for (final m in _chatUi)
+            {
+              't': m.isChange
+                  ? 'change'
+                  : m.isTool
+                      ? 'tool'
+                      : m.isUser
+                          ? 'user'
+                          : 'ai',
+              'text': m.text,
+              if (m.isChange) 'reviewed': m.reviewed ?? true,
+            }
+        ],
+      });
+
+  /// 每轮对话后自动持久化(已入库的事件)
+  Future<void> _persistChat() async {
+    final id = widget.event?.id;
+    if (id == null) return;
+    try {
+      await widget.db.updateEvent(id, chatLog: _encodeChat());
+    } catch (_) {}
   }
 
   @override
@@ -225,7 +295,33 @@ class _EventEditPageState extends State<EventEditPage>
         (outline: _outlineCtrl.text, content: _contentCtrl.text);
     try {
       final settings = await SettingsStore.loadFor(LlmPurpose.writing);
-      if (_messages.isEmpty) await _initSession();
+      if (_messages.isEmpty) {
+        await _initSession();
+      } else if (_systemStale) {
+        // 重建背景,设定/前文可能已变化
+        final all = await widget.db.allEntriesOf(widget.novel.id);
+        final rels = await widget.db.relationsOfNovel(widget.novel.id);
+        final links = await widget.db.linksOfNovel(widget.novel.id);
+        final sys = {
+          'role': 'system',
+          'content': writingAgentSystem(
+            novel: widget.novel,
+            allEntries: all,
+            relations: rels,
+            links: links,
+            chapterTitle: widget.chapter.title,
+            priorOutlines: _priorOutlines,
+            prevContentTail: _prevTail,
+            outline: _outlineCtrl.text,
+          ),
+        };
+        if (_messages.isNotEmpty && _messages.first['role'] == 'system') {
+          _messages[0] = sys;
+        } else {
+          _messages.insert(0, sys);
+        }
+        _systemStale = false;
+      }
       await _maybeCompress(settings);
       _messages.add({'role': 'user', 'content': fullText});
       final executor = WritingToolExecutor(
@@ -342,6 +438,7 @@ class _EventEditPageState extends State<EventEditPage>
       _toast('对话失败：$e', error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
+      await _persistChat();
     }
   }
 
@@ -403,10 +500,13 @@ class _EventEditPageState extends State<EventEditPage>
     }
     if (widget.event == null) {
       final id = await widget.db.createEvent(widget.chapter.id, outline);
-      await widget.db.updateEvent(id, content: _contentCtrl.text);
+      await widget.db.updateEvent(id,
+          content: _contentCtrl.text, chatLog: _encodeChat());
     } else {
       await widget.db.updateEvent(widget.event!.id,
-          outline: outline, content: _contentCtrl.text);
+          outline: outline,
+          content: _contentCtrl.text,
+          chatLog: _encodeChat());
     }
     if (mounted) Navigator.pop(context);
   }

@@ -66,6 +66,9 @@ class ChapterEvents extends Table {
       integer().references(Chapters, #id, onDelete: KeyAction.cascade)();
   TextColumn get outline => text().withDefault(const Constant(''))();
   TextColumn get content => text().withDefault(const Constant(''))();
+
+  /// 写作对话历史(JSON)
+  TextColumn get chatLog => text().withDefault(const Constant(''))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -96,7 +99,7 @@ class AppDatabase extends _$AppDatabase {
             ));
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -107,6 +110,9 @@ class AppDatabase extends _$AppDatabase {
           if (from < 5) {
             await m.createTable(chapters);
             await m.createTable(chapterEvents);
+          }
+          if (from < 6) {
+            await m.addColumn(chapterEvents, chapterEvents.chatLog);
           }
         },
         beforeOpen: (details) async {
@@ -224,11 +230,13 @@ class AppDatabase extends _$AppDatabase {
       into(chapterEvents).insert(ChapterEventsCompanion.insert(
           chapterId: chapterId, outline: Value(outline)));
 
-  Future<void> updateEvent(int id, {String? outline, String? content}) =>
+  Future<void> updateEvent(int id,
+          {String? outline, String? content, String? chatLog}) =>
       (update(chapterEvents)..where((t) => t.id.equals(id)))
           .write(ChapterEventsCompanion(
         outline: outline == null ? const Value.absent() : Value(outline),
         content: content == null ? const Value.absent() : Value(content),
+        chatLog: chatLog == null ? const Value.absent() : Value(chatLog),
         updatedAt: Value(DateTime.now()),
       ));
 

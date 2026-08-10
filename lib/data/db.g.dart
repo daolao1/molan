@@ -1827,6 +1827,18 @@ class $ChapterEventsTable extends ChapterEvents
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _chatLogMeta = const VerificationMeta(
+    'chatLog',
+  );
+  @override
+  late final GeneratedColumn<String> chatLog = GeneratedColumn<String>(
+    'chat_log',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1857,6 +1869,7 @@ class $ChapterEventsTable extends ChapterEvents
     chapterId,
     outline,
     content,
+    chatLog,
     createdAt,
     updatedAt,
   ];
@@ -1893,6 +1906,12 @@ class $ChapterEventsTable extends ChapterEvents
       context.handle(
         _contentMeta,
         content.isAcceptableOrUnknown(data['content']!, _contentMeta),
+      );
+    }
+    if (data.containsKey('chat_log')) {
+      context.handle(
+        _chatLogMeta,
+        chatLog.isAcceptableOrUnknown(data['chat_log']!, _chatLogMeta),
       );
     }
     if (data.containsKey('created_at')) {
@@ -1932,6 +1951,10 @@ class $ChapterEventsTable extends ChapterEvents
         DriftSqlType.string,
         data['${effectivePrefix}content'],
       )!,
+      chatLog: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}chat_log'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -1954,6 +1977,9 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
   final int chapterId;
   final String outline;
   final String content;
+
+  /// 写作对话历史(JSON)
+  final String chatLog;
   final DateTime createdAt;
   final DateTime updatedAt;
   const ChapterEvent({
@@ -1961,6 +1987,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
     required this.chapterId,
     required this.outline,
     required this.content,
+    required this.chatLog,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -1971,6 +1998,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
     map['chapter_id'] = Variable<int>(chapterId);
     map['outline'] = Variable<String>(outline);
     map['content'] = Variable<String>(content);
+    map['chat_log'] = Variable<String>(chatLog);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -1982,6 +2010,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
       chapterId: Value(chapterId),
       outline: Value(outline),
       content: Value(content),
+      chatLog: Value(chatLog),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -1997,6 +2026,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
       chapterId: serializer.fromJson<int>(json['chapterId']),
       outline: serializer.fromJson<String>(json['outline']),
       content: serializer.fromJson<String>(json['content']),
+      chatLog: serializer.fromJson<String>(json['chatLog']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -2009,6 +2039,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
       'chapterId': serializer.toJson<int>(chapterId),
       'outline': serializer.toJson<String>(outline),
       'content': serializer.toJson<String>(content),
+      'chatLog': serializer.toJson<String>(chatLog),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -2019,6 +2050,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
     int? chapterId,
     String? outline,
     String? content,
+    String? chatLog,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => ChapterEvent(
@@ -2026,6 +2058,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
     chapterId: chapterId ?? this.chapterId,
     outline: outline ?? this.outline,
     content: content ?? this.content,
+    chatLog: chatLog ?? this.chatLog,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -2035,6 +2068,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
       chapterId: data.chapterId.present ? data.chapterId.value : this.chapterId,
       outline: data.outline.present ? data.outline.value : this.outline,
       content: data.content.present ? data.content.value : this.content,
+      chatLog: data.chatLog.present ? data.chatLog.value : this.chatLog,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -2047,6 +2081,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
           ..write('chapterId: $chapterId, ')
           ..write('outline: $outline, ')
           ..write('content: $content, ')
+          ..write('chatLog: $chatLog, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -2054,8 +2089,15 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, chapterId, outline, content, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    chapterId,
+    outline,
+    content,
+    chatLog,
+    createdAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2064,6 +2106,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
           other.chapterId == this.chapterId &&
           other.outline == this.outline &&
           other.content == this.content &&
+          other.chatLog == this.chatLog &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -2073,6 +2116,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
   final Value<int> chapterId;
   final Value<String> outline;
   final Value<String> content;
+  final Value<String> chatLog;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const ChapterEventsCompanion({
@@ -2080,6 +2124,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
     this.chapterId = const Value.absent(),
     this.outline = const Value.absent(),
     this.content = const Value.absent(),
+    this.chatLog = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -2088,6 +2133,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
     required int chapterId,
     this.outline = const Value.absent(),
     this.content = const Value.absent(),
+    this.chatLog = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   }) : chapterId = Value(chapterId);
@@ -2096,6 +2142,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
     Expression<int>? chapterId,
     Expression<String>? outline,
     Expression<String>? content,
+    Expression<String>? chatLog,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -2104,6 +2151,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
       if (chapterId != null) 'chapter_id': chapterId,
       if (outline != null) 'outline': outline,
       if (content != null) 'content': content,
+      if (chatLog != null) 'chat_log': chatLog,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -2114,6 +2162,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
     Value<int>? chapterId,
     Value<String>? outline,
     Value<String>? content,
+    Value<String>? chatLog,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -2122,6 +2171,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
       chapterId: chapterId ?? this.chapterId,
       outline: outline ?? this.outline,
       content: content ?? this.content,
+      chatLog: chatLog ?? this.chatLog,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -2142,6 +2192,9 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
     if (content.present) {
       map['content'] = Variable<String>(content.value);
     }
+    if (chatLog.present) {
+      map['chat_log'] = Variable<String>(chatLog.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -2158,6 +2211,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
           ..write('chapterId: $chapterId, ')
           ..write('outline: $outline, ')
           ..write('content: $content, ')
+          ..write('chatLog: $chatLog, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -4238,6 +4292,7 @@ typedef $$ChapterEventsTableCreateCompanionBuilder =
       required int chapterId,
       Value<String> outline,
       Value<String> content,
+      Value<String> chatLog,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -4247,6 +4302,7 @@ typedef $$ChapterEventsTableUpdateCompanionBuilder =
       Value<int> chapterId,
       Value<String> outline,
       Value<String> content,
+      Value<String> chatLog,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -4298,6 +4354,11 @@ class $$ChapterEventsTableFilterComposer
 
   ColumnFilters<String> get content => $composableBuilder(
     column: $table.content,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get chatLog => $composableBuilder(
+    column: $table.chatLog,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4359,6 +4420,11 @@ class $$ChapterEventsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get chatLog => $composableBuilder(
+    column: $table.chatLog,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -4410,6 +4476,9 @@ class $$ChapterEventsTableAnnotationComposer
 
   GeneratedColumn<String> get content =>
       $composableBuilder(column: $table.content, builder: (column) => column);
+
+  GeneratedColumn<String> get chatLog =>
+      $composableBuilder(column: $table.chatLog, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -4473,6 +4542,7 @@ class $$ChapterEventsTableTableManager
                 Value<int> chapterId = const Value.absent(),
                 Value<String> outline = const Value.absent(),
                 Value<String> content = const Value.absent(),
+                Value<String> chatLog = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => ChapterEventsCompanion(
@@ -4480,6 +4550,7 @@ class $$ChapterEventsTableTableManager
                 chapterId: chapterId,
                 outline: outline,
                 content: content,
+                chatLog: chatLog,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -4489,6 +4560,7 @@ class $$ChapterEventsTableTableManager
                 required int chapterId,
                 Value<String> outline = const Value.absent(),
                 Value<String> content = const Value.absent(),
+                Value<String> chatLog = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => ChapterEventsCompanion.insert(
@@ -4496,6 +4568,7 @@ class $$ChapterEventsTableTableManager
                 chapterId: chapterId,
                 outline: outline,
                 content: content,
+                chatLog: chatLog,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
