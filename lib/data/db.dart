@@ -66,7 +66,8 @@ enum EntryKind {
   location('地点', Icons.place_outlined),
   item('物品', Icons.category_outlined),
   scene('场景', Icons.pin_drop_outlined),
-  lore('设定', Icons.public_outlined);
+  lore('设定', Icons.public_outlined),
+  foreshadow('伏笔', Icons.visibility_off_outlined);
 
   const EntryKind(this.label, this.icon);
   final String label;

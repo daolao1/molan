@@ -53,12 +53,20 @@ const _loreFields = [
   EntryField('detail', '内容', '这条设定的具体描述', 6),
 ];
 
+const _foreshadowFields = [
+  EntryField('setup', '埋设', '在哪里、以什么形式埋下(章节/事件/原文线索)', 3),
+  EntryField('payoff', '回收计划', '预计何时何地怎样揭晓、兼现', 3),
+  EntryField('status', '状态', '待埋设 / 已埋设 / 已回收'),
+  EntryField('notes', '备注', '其他补充', 3),
+];
+
 List<EntryField> entryFieldsFor(EntryKind kind) => switch (kind) {
       EntryKind.character => _characterFields,
       EntryKind.location => _locationFields,
       EntryKind.item => _itemFields,
       EntryKind.scene => _sceneFields,
       EntryKind.lore => _loreFields,
+      EntryKind.foreshadow => _foreshadowFields,
     };
 
 /// 把 AI 给的字段 key 归一到模板 key:支持直接用中文标签(如“性格”→personality)

@@ -30,6 +30,7 @@ class _NovelPageState extends State<NovelPage>
     EntryKind.scene,
     EntryKind.item,
     EntryKind.lore,
+    EntryKind.foreshadow,
   ];
   late final TabController _tab =
       TabController(length: _kinds.length, vsync: this);

@@ -105,7 +105,7 @@ const writingToolSchemas = [
         'properties': {
           'kind': {
             'type': 'string',
-            'enum': ['character', 'location', 'item', 'scene', 'lore'],
+            'enum': ['character', 'location', 'item', 'scene', 'lore', 'foreshadow'],
           },
           'name': {'type': 'string', 'description': '条目名称(现名)'},
           'fields': {
@@ -141,7 +141,7 @@ const writingToolSchemas = [
         'properties': {
           'kind': {
             'type': 'string',
-            'enum': ['character', 'location', 'item', 'scene', 'lore'],
+            'enum': ['character', 'location', 'item', 'scene', 'lore', 'foreshadow'],
           },
           'name': {'type': 'string', 'description': '条目名称(必须完全一致)'},
         },
