@@ -43,6 +43,7 @@ class _EventEditPageState extends State<EventEditPage> {
       TextEditingController(text: widget.event?.content ?? '');
   final _chatCtrl = TextEditingController();
   final _chatScroll = ScrollController();
+  final _chatFocus = FocusNode();
 
   /// LLM 会话(system + 全部轮次,含工具调用过程)
   final List<Map<String, dynamic>> _messages = [];
@@ -71,6 +72,7 @@ class _EventEditPageState extends State<EventEditPage> {
     _contentCtrl.dispose();
     _chatCtrl.dispose();
     _chatScroll.dispose();
+    _chatFocus.dispose();
     super.dispose();
   }
 
@@ -282,41 +284,41 @@ class _EventEditPageState extends State<EventEditPage> {
         ),
         body: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: TextField(
-                controller: _outlineCtrl,
-                minLines: 2,
-                maxLines: 6,
-                onChanged: (_) => _dirty = true,
-                decoration: InputDecoration(
-                  labelText: '事件大纲',
-                  hintText: '可手写,或写完正文后点右下角"整理"',
-                  alignLabelWithHint: true,
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.sync_alt),
-                    tooltip: '从正文整理大纲',
-                    onPressed: _busy ? null : _outlineFromContent,
-                  ),
-                ),
-              ),
-            ),
+            // 可滚动区:键盘弹出时正文不会被挤没,自动滚到光标
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: TextField(
-                  controller: _contentCtrl,
-                  expands: true,
-                  maxLines: null,
-                  textAlignVertical: TextAlignVertical.top,
-                  onChanged: (_) => _dirty = true,
-                  decoration: const InputDecoration(
-                    labelText: '正文(AI 通过对话直接修改这里)',
-                    alignLabelWithHint: true,
-                    border: OutlineInputBorder(),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                children: [
+                  TextField(
+                    controller: _outlineCtrl,
+                    minLines: 2,
+                    maxLines: 6,
+                    onChanged: (_) => _dirty = true,
+                    decoration: InputDecoration(
+                      labelText: '事件大纲',
+                      hintText: '可手写,或写完正文后点右侧“整理”',
+                      alignLabelWithHint: true,
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.sync_alt),
+                        tooltip: '从正文整理大纲',
+                        onPressed: _busy ? null : _outlineFromContent,
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _contentCtrl,
+                    minLines: 12,
+                    maxLines: null,
+                    onChanged: (_) => _dirty = true,
+                    decoration: const InputDecoration(
+                      labelText: '正文(AI 通过对话直接修改这里)',
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
               ),
             ),
             _chatPanel(context),
@@ -327,6 +329,11 @@ class _EventEditPageState extends State<EventEditPage> {
   }
 
   Widget _chatPanel(BuildContext context) {
+    // 键盘弹出且焦点不在对话输入时(在编正文),收起历史给正文腾地方
+    final kbOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final showHistory =
+        _chatUi.isNotEmpty && (!kbOpen || _chatFocus.hasFocus);
+    final narrow = MediaQuery.sizeOf(context).width < 600;
     return Container(
       decoration: BoxDecoration(
         border: Border(
@@ -335,9 +342,9 @@ class _EventEditPageState extends State<EventEditPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_chatUi.isNotEmpty)
+          if (showHistory)
             ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 200),
+              constraints: BoxConstraints(maxHeight: narrow ? 140 : 200),
               child: ListView.builder(
                 controller: _chatScroll,
                 shrinkWrap: true,
@@ -377,6 +384,7 @@ class _EventEditPageState extends State<EventEditPage> {
                 Expanded(
                   child: TextField(
                     controller: _chatCtrl,
+                    focusNode: _chatFocus,
                     minLines: 1,
                     maxLines: 4,
                     decoration: const InputDecoration(
