@@ -58,6 +58,23 @@ const writingToolSchemas = [
   {
     'type': 'function',
     'function': {
+      'name': 'set_highlight',
+      'description': '在正文编辑器里高亮标记一段文字,帮作者定位(如“帮我找到写雨的那段”);不改动正文',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'text': {
+            'type': 'string',
+            'description': '要高亮的原文片段(逐字唯一匹配);传空字符串表示清除高亮'
+          },
+        },
+        'required': ['text'],
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
       'name': 'read_outline',
       'description': '读取当前事件的大纲',
       'parameters': {'type': 'object', 'properties': <String, dynamic>{}},
@@ -125,6 +142,7 @@ class WritingToolExecutor {
     required this.writeContent,
     required this.readOutline,
     required this.writeOutline,
+    required this.highlight,
     required this.db,
     required this.novelId,
     required this.lookup,
@@ -138,6 +156,10 @@ class WritingToolExecutor {
 
   final String Function() readOutline;
   final void Function(String) writeOutline;
+
+  /// 高亮标记原文片段(空串=清除);返回结果消息
+  final String Function(String fragment) highlight;
+
   final AppDatabase db;
   final int novelId;
   final NovelToolExecutor lookup;
@@ -175,6 +197,8 @@ class WritingToolExecutor {
       case 'set_content':
         writeContent(args['text'] as String? ?? '');
         return '已重写全文';
+      case 'set_highlight':
+        return highlight(args['text'] as String? ?? '');
       case 'read_outline':
         final o = readOutline();
         return o.trim().isEmpty ? '(大纲目前为空)' : o;

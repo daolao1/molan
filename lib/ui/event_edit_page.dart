@@ -93,7 +93,7 @@ class _EventEditPageState extends State<EventEditPage>
   late final _outlineCtrl =
       TextEditingController(text: widget.event?.outline ?? '');
   late final _contentCtrl =
-      TextEditingController(text: widget.event?.content ?? '');
+      HighlightController(text: widget.event?.content ?? '');
   final _chatCtrl = TextEditingController();
   final _chatScroll = ScrollController();
   final _chatFocus = FocusNode();
@@ -117,6 +117,7 @@ class _EventEditPageState extends State<EventEditPage>
     'set_content': '重写全文',
     'read_outline': '读取大纲',
     'set_outline': '更新大纲',
+    'set_highlight': '高亮标记',
     'upsert_entry': '更新设定',
     'get_entry_detail': '查阅设定',
     'list_entries': '列出条目',
@@ -302,20 +303,30 @@ class _EventEditPageState extends State<EventEditPage>
   Future<void> _send() async {
     final text = _chatCtrl.text.trim();
     if (text.isEmpty || _busy) return;
-    // 正文选区随消息附给 agent(发送瞬间快照)
+    // 钉住的高亮优先;其次发送瞬间的实时选区
     var fullText = text;
     var uiText = text;
+    String? selected;
+    int? selStart;
+    final hl = _contentCtrl.highlightedText;
     final sel = _contentCtrl.selection;
-    if (sel.isValid && !sel.isCollapsed) {
-      final selected = sel.textInside(_contentCtrl.text);
-      if (selected.trim().isNotEmpty) {
-        final before = _contentCtrl.text.substring(0, sel.start);
-        final startLine = '\n'.allMatches(before).length + 1;
-        final endLine = startLine + '\n'.allMatches(selected).length;
-        final range = endLine == startLine ? '第 $startLine 行' : '第 $startLine-$endLine 行';
-        fullText = '$text\n\n【作者选中的正文片段($range)】\n$selected';
-        uiText = '$text\n（附选中片段 $range）';
+    if (hl != null) {
+      selected = hl;
+      selStart = _contentCtrl.highlight!.start;
+    } else if (sel.isValid && !sel.isCollapsed) {
+      final t = sel.textInside(_contentCtrl.text);
+      if (t.trim().isNotEmpty) {
+        selected = t;
+        selStart = sel.start;
       }
+    }
+    if (selected != null && selStart != null) {
+      final before = _contentCtrl.text.substring(0, selStart);
+      final startLine = '\n'.allMatches(before).length + 1;
+      final endLine = startLine + '\n'.allMatches(selected).length;
+      final range = endLine == startLine ? '第 $startLine 行' : '第 $startLine-$endLine 行';
+      fullText = '$text\n\n【作者高亮的正文片段($range)】\n$selected';
+      uiText = '$text\n（附高亮片段 $range）';
     }
     setState(() {
       _busy = true;
@@ -367,9 +378,12 @@ class _EventEditPageState extends State<EventEditPage>
         readContent: () => _contentCtrl.text,
         writeContent: (v) {
           if (!mounted) return;
+          // 改写后按原片段重定位高亮
+          final frag = _contentCtrl.highlightedText;
           setState(() {
             _contentCtrl.text = v;
             _dirty = true;
+            if (frag != null) _contentCtrl.relocateHighlight(frag);
           });
         },
         readOutline: () => _outlineCtrl.text,
@@ -379,6 +393,24 @@ class _EventEditPageState extends State<EventEditPage>
             _outlineCtrl.text = v;
             _dirty = true;
           });
+        },
+        highlight: (frag) {
+          if (frag.trim().isEmpty) {
+            if (mounted) setState(() => _contentCtrl.clearHighlight());
+            return '已清除高亮';
+          }
+          final c = _contentCtrl.text;
+          final n = frag.allMatches(c).length;
+          if (n == 0) return '失败:正文中未找到该片段,请先 read_content 核对';
+          if (n > 1) return '失败:该片段出现 $n 处,请给更长的唯一片段';
+          final idx = c.indexOf(frag);
+          if (mounted) {
+            setState(
+                () => _contentCtrl.setHighlight(idx, idx + frag.length));
+            if (_tab.index != 0) _toast('已在编辑页高亮标记');
+          }
+          final line = '\n'.allMatches(c.substring(0, idx)).length + 1;
+          return '已高亮第 $line 行起的 ${frag.length} 字';
         },
         db: widget.db,
         novelId: widget.novel.id,
@@ -745,12 +777,17 @@ class _EventEditPageState extends State<EventEditPage>
                           final selLen = s.isValid && !s.isCollapsed
                               ? s.textInside(v.text).length
                               : 0;
+                          final hl = _contentCtrl.highlightedText;
+                          final info = hl != null
+                              ? ' · 已高亮 ${hl.length} 字,对话将附带'
+                              : selLen > 0
+                                  ? ' · 已选中 $selLen 字'
+                                  : '';
                           return Row(
                             children: [
                               Expanded(
                                 child: Text(
-                                  '$lineCount 行 · ${v.text.length} 字'
-                                  '${selLen > 0 ? ' · 已选中 $selLen 字,对话将附带选区' : ''}',
+                                  '$lineCount 行 · ${v.text.length} 字$info',
                                   style: Theme.of(context)
                                       .textTheme
                                       .bodySmall
@@ -760,6 +797,22 @@ class _EventEditPageState extends State<EventEditPage>
                                               .outline),
                                 ),
                               ),
+                              if (hl == null && selLen > 0)
+                                TextButton.icon(
+                                  icon: const Icon(Icons.border_color,
+                                      size: 16),
+                                  label: const Text('标记高亮'),
+                                  onPressed: () => setState(() =>
+                                      _contentCtrl.setHighlight(
+                                          s.start, s.end)),
+                                )
+                              else if (hl != null)
+                                TextButton.icon(
+                                  icon: const Icon(Icons.close, size: 16),
+                                  label: const Text('清除高亮'),
+                                  onPressed: () => setState(
+                                      () => _contentCtrl.clearHighlight()),
+                                ),
                               IconButton(
                                 icon: const Icon(Icons.undo, size: 18),
                                 tooltip: '回退上一版(${_history.length})',
@@ -905,6 +958,7 @@ class _EventEditPageState extends State<EventEditPage>
       'append_text' => '$label +${(args['text']?.toString() ?? '').length} 字',
       'set_content' => '$label(${(args['text']?.toString() ?? '').length} 字)',
       'set_outline' => '$label “${s(args['text'])}”',
+      'set_highlight' => '$label “${s(args['text'])}”',
       'upsert_entry' =>
         '$label「${args['name']}」(${[
           if (args['fields'] is Map) ...(args['fields'] as Map).keys,
@@ -1143,6 +1197,7 @@ class _EventEditPageState extends State<EventEditPage>
       'append_text' => '$label +${(args['text']?.toString() ?? '').length} 字',
       'set_content' => '$label(${(args['text']?.toString() ?? '').length} 字)',
       'set_outline' => '$label “${s(args['text'])}”',
+      'set_highlight' => '$label “${s(args['text'])}”',
       'upsert_entry' => '$label「${args['name']}」',
       _ => label,
     };
