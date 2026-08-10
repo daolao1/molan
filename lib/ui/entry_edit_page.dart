@@ -332,17 +332,21 @@ class _EntryEditPageState extends State<EntryEditPage> {
 
   /// index 为 null 时新增,否则编辑第 index 条称呼
   Future<void> _editAppellation({int? index}) async {
+    const other = '其他人';
     final apps = _parseApps();
     final editing = index != null ? apps[index] : null;
     final callCtrl = TextEditingController(text: editing?.call ?? '');
-    final selected = <String>{...?editing?.by};
-    // 可选使用者 = 其他人物 ∪ 已有的非卡片名字(AI 写入的)
-    final names = <String>{
+    final charNames = <String>{
       for (final c in _allEntries)
         if (c.kind == EntryKind.character.name && c.id != widget.entry?.id)
           c.name,
-      ...selected,
-    }.toList();
+    };
+    // 使用者只能是已有人物或"其他人";历史/AI 写入的散名归入"其他人"
+    final selected = <String>{
+      for (final n in editing?.by ?? const <String>[])
+        charNames.contains(n) ? n : other,
+    };
+    final names = [...charNames, other];
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -377,41 +381,6 @@ class _EntryEditPageState extends State<EntryEditPage> {
                         onSelected: (v) => setDialog(() =>
                             v ? selected.add(n) : selected.remove(n)),
                       ),
-                    ActionChip(
-                      avatar: const Icon(Icons.add, size: 16),
-                      label: const Text('其他人…'),
-                      onPressed: () async {
-                        final ctrl = TextEditingController();
-                        final name = await showDialog<String>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('其他使用者'),
-                            content: TextField(
-                              controller: ctrl,
-                              autofocus: true,
-                              decoration: const InputDecoration(
-                                  hintText: '如:村民们 / 江湖人 / 某个路人',
-                                  border: OutlineInputBorder()),
-                            ),
-                            actions: [
-                              TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('取消')),
-                              FilledButton(
-                                  onPressed: () => Navigator.pop(
-                                      context, ctrl.text.trim()),
-                                  child: const Text('添加')),
-                            ],
-                          ),
-                        );
-                        if (name != null && name.isNotEmpty) {
-                          setDialog(() {
-                            if (!names.contains(name)) names.add(name);
-                            selected.add(name);
-                          });
-                        }
-                      },
-                    ),
                   ],
                 ),
               ],

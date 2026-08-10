@@ -14,7 +14,7 @@ class EntryField {
 
 const _characterFields = [
   EntryField('appellations', '称呼',
-      '每行一条:称呼|使用者1、使用者2;不写使用者表示所有人都这么叫。如:\n老大|张三、李四\n陛下', 3),
+      '每行一条:称呼|使用者1、使用者2;使用者只能是已有人物名或"其他人";不写使用者表示所有人都这么叫。如:\n老大|张三、李四\n前辈|其他人\n陛下', 3),
   EntryField('basic', '基本信息', '性别、年龄、种族、身份、所属势力', 2),
   EntryField('appearance', '外貌', '容貌、身形、衣着、标志性特征', 3),
   EntryField('personality', '性格', '性格特点、说话方式、习惯、软肋', 3),
