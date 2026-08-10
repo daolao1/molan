@@ -109,6 +109,7 @@ class _EventEditPageState extends State<EventEditPage>
   bool _busy = false;
   bool _dirty = false;
   bool _stopRequested = false;
+  Offset _lastTapPos = Offset.zero;
 
   static const _toolLabels = {
     'read_content': '读取正文',
@@ -653,6 +654,69 @@ class _EventEditPageState extends State<EventEditPage>
     _toast('已回退一步(剩 ${_history.length} 步可退)');
   }
 
+  /// 正文的自定义选择菜单:复制/粘贴/全选/高亮/取消高亮
+  Widget _contentContextMenu(BuildContext context, EditableTextState state) {
+    final sel = _contentCtrl.selection;
+    final hasSel = sel.isValid && !sel.isCollapsed;
+    return AdaptiveTextSelectionToolbar.buttonItems(
+      anchors: state.contextMenuAnchors,
+      buttonItems: [
+        if (hasSel)
+          ContextMenuButtonItem(
+            label: '复制',
+            onPressed: () =>
+                state.copySelection(SelectionChangedCause.toolbar),
+          ),
+        ContextMenuButtonItem(
+          label: '粘贴',
+          onPressed: () => state.pasteText(SelectionChangedCause.toolbar),
+        ),
+        ContextMenuButtonItem(
+          label: '全选',
+          onPressed: () => state.selectAll(SelectionChangedCause.toolbar),
+        ),
+        if (hasSel)
+          ContextMenuButtonItem(
+            label: '高亮',
+            onPressed: () {
+              setState(() => _contentCtrl.setHighlight(sel.start, sel.end));
+              state.hideToolbar();
+            },
+          ),
+        if (_contentCtrl.highlight != null)
+          ContextMenuButtonItem(
+            label: '取消高亮',
+            onPressed: () {
+              setState(() => _contentCtrl.clearHighlight());
+              state.hideToolbar();
+            },
+          ),
+      ],
+    );
+  }
+
+  /// 单击落在高亮内时,弹“取消高亮”菜单
+  Future<void> _maybeOfferClearHighlight() async {
+    final h = _contentCtrl.highlight;
+    final sel = _contentCtrl.selection;
+    if (h == null || !sel.isValid || !sel.isCollapsed) return;
+    if (sel.start <= h.start || sel.start >= h.end) return;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final p = _lastTapPos;
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+          Rect.fromLTWH(p.dx, p.dy, 0, 0), Offset.zero & overlay.size),
+      items: const [
+        PopupMenuItem(value: 'clear', height: 40, child: Text('取消高亮')),
+      ],
+    );
+    if (choice == 'clear' && mounted) {
+      setState(() => _contentCtrl.clearHighlight());
+    }
+  }
+
   void _scrollChat() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_chatScroll.hasClients) {
@@ -755,15 +819,21 @@ class _EventEditPageState extends State<EventEditPage>
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _contentCtrl,
-                  minLines: 12,
-                  maxLines: null,
-                  onChanged: (_) => _dirty = true,
-                  decoration: const InputDecoration(
-                    labelText: '正文(AI 在对话页直接修改这里)',
-                    alignLabelWithHint: true,
-                    border: OutlineInputBorder(),
+                Listener(
+                  // 记录按下位置,供“取消高亮”弹出菜单定位
+                  onPointerDown: (e) => _lastTapPos = e.position,
+                  child: TextField(
+                    controller: _contentCtrl,
+                    minLines: 12,
+                    maxLines: null,
+                    onChanged: (_) => _dirty = true,
+                    onTap: _maybeOfferClearHighlight,
+                    contextMenuBuilder: _contentContextMenu,
+                    decoration: const InputDecoration(
+                      labelText: '正文(AI 在对话页直接修改这里)',
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
                       const SizedBox(height: 4),
