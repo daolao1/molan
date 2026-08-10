@@ -9,6 +9,7 @@ import '../data/llm_client.dart';
 import '../data/novel_tools.dart';
 import '../data/prompts.dart';
 import '../data/settings.dart';
+import '../data/writing_cot.dart';
 import '../data/writing_tools.dart';
 import 'widgets.dart';
 
@@ -419,7 +420,8 @@ class _EventEditPageState extends State<EventEditPage>
         await _initSession();
       }
       await _maybeCompress(settings);
-      _messages.add({'role': 'user', 'content': fullText});
+      _messages.add(
+          {'role': 'user', 'content': fullText + researchPhaseSuffix});
       final executor = WritingToolExecutor(
         readContent: () => _contentCtrl.text,
         writeContent: (v) {
@@ -626,11 +628,19 @@ class _EventEditPageState extends State<EventEditPage>
       }
 
       String reply;
+      // 两阶段协议:调研阶段只挂载只读工具,产出【构思】后才开放写入工具
+      final allTools = [...writingToolSchemas, ...novelToolSchemas];
+      final researchTools = [
+        for (final t in allTools)
+          if (researchToolNames
+              .contains((t['function'] as Map)['name']))
+            t
+      ];
       try {
         reply = await LlmClient.chatTurnStream(
           settings,
           messages: _messages,
-          tools: [...writingToolSchemas, ...novelToolSchemas],
+          tools: researchTools,
           onToolCall: loggedCall,
           onDelta: applyDelta,
           shouldStop: () => _stopRequested,
@@ -642,13 +652,38 @@ class _EventEditPageState extends State<EventEditPage>
             });
           },
         );
+        if (reply.contains('【构思】') && !_stopRequested) {
+          _messages.add({'role': 'user', 'content': executePhaseMessage});
+          if (mounted) setState(() => streamMsg = null);
+          reply = await LlmClient.chatTurnStream(
+            settings,
+            messages: _messages,
+            tools: allTools,
+            onToolCall: loggedCall,
+            onDelta: applyDelta,
+            shouldStop: () => _stopRequested,
+            onToolStart: (name) {
+              if (!mounted) return;
+              setState(() => streamMsg = null);
+            },
+          );
+        }
       } on ToolsUnsupportedException {
         reply = await LlmClient.chatTurn(
           settings,
           messages: _messages,
-          tools: [...writingToolSchemas, ...novelToolSchemas],
+          tools: researchTools,
           onToolCall: loggedCall,
         );
+        if (reply.contains('【构思】')) {
+          _messages.add({'role': 'user', 'content': executePhaseMessage});
+          reply = await LlmClient.chatTurn(
+            settings,
+            messages: _messages,
+            tools: allTools,
+            onToolCall: loggedCall,
+          );
+        }
       }
       if (!mounted) return;
       setState(() {
