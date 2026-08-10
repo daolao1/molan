@@ -3,6 +3,7 @@ library;
 
 import 'db.dart';
 import 'entry_fields.dart';
+import 'writing_cot.dart';
 
 /// 写作 agent 的系统提示词:对话式,通过工具管理正文;附带小说背景
 String writingAgentSystem({
@@ -37,6 +38,8 @@ String writingAgentSystem({
 作者高亮机制:
 - 作者的消息可能附带【作者高亮的正文片段】,那是他在正文里选中或钉住的文字;指令优先针对该片段操作
 - 作者让你找某段、看某处时,用 set_highlight 把定位结果标给他看;高亮任务处理完毕后可用 set_highlight("") 清除
+
+$writingChainOfThought
 
 工作方式:
 - 对正文、大纲、设定的一切改动都必须通过工具落实,只回复不动手是不可接受的;不要把正文粘贴在对话回复里
