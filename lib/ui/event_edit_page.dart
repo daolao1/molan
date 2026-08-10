@@ -379,12 +379,9 @@ class _EventEditPageState extends State<EventEditPage>
         readContent: () => _contentCtrl.text,
         writeContent: (v) {
           if (!mounted) return;
-          // 改写后按原片段重定位高亮
-          final frag = _contentCtrl.highlightedText;
           setState(() {
             _contentCtrl.text = v;
             _dirty = true;
-            if (frag != null) _contentCtrl.relocateHighlight(frag);
           });
         },
         readOutline: () => _outlineCtrl.text,

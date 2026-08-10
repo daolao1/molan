@@ -27,7 +27,8 @@ class SubmitOnEnter extends StatelessWidget {
   }
 }
 
-/// 带持久高亮的正文控制器:高亮区间独立于选区,失焦仍然渲染
+/// 带持久高亮的正文控制器:高亮区间独立于选区,失焦仍然渲染;
+/// 文本变化时自动迁移高亮,片段被改动则自然消失
 class HighlightController extends TextEditingController {
   HighlightController({super.text});
 
@@ -35,6 +36,31 @@ class HighlightController extends TextEditingController {
   TextRange? highlight;
 
   Color highlightColor = const Color(0x33FFC107);
+
+  @override
+  set value(TextEditingValue newValue) {
+    final h = highlight;
+    if (h != null && newValue.text != text) {
+      final frag = h.end <= text.length && h.start < h.end
+          ? text.substring(h.start, h.end)
+          : '';
+      highlight = frag.isEmpty ? null : _nearestRange(newValue.text, frag, h.start);
+    }
+    super.value = newValue;
+  }
+
+  /// 距原位置最近的匹配;找不到返回 null(高亮自然消失)
+  static TextRange? _nearestRange(String text, String frag, int oldStart) {
+    TextRange? best;
+    var idx = text.indexOf(frag);
+    while (idx >= 0) {
+      if (best == null || (idx - oldStart).abs() < (best.start - oldStart).abs()) {
+        best = TextRange(start: idx, end: idx + frag.length);
+      }
+      idx = text.indexOf(frag, idx + 1);
+    }
+    return best;
+  }
 
   /// 钉住区间;越界自动收敛,空区间视为清除
   void setHighlight(int start, int end) {
@@ -48,15 +74,6 @@ class HighlightController extends TextEditingController {
   void clearHighlight() {
     if (highlight == null) return;
     highlight = null;
-    notifyListeners();
-  }
-
-  /// 文本被程序性改写后,尝试按原文片段重新定位高亮
-  void relocateHighlight(String fragment) {
-    if (fragment.isEmpty) return clearHighlight();
-    final idx = text.indexOf(fragment);
-    if (idx < 0) return clearHighlight();
-    highlight = TextRange(start: idx, end: idx + fragment.length);
     notifyListeners();
   }
 
