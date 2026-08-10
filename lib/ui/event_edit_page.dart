@@ -249,6 +249,11 @@ class _EventEditPageState extends State<EventEditPage>
           _chatUi.add(_ChatMsg.change('本轮改动:${parts.join(' · ')}', snapshot));
         }
       });
+      // 在编辑页发的指令,给个简短回执
+      if (_tab.index == 0) {
+        final brief = reply.trim();
+        _toast(brief.length <= 80 ? brief : '${brief.substring(0, 80)}…（详情见对话页）');
+      }
       _scrollChat();
     } on LlmException catch (e) {
       _toast(e.message, error: true);
@@ -375,10 +380,13 @@ class _EventEditPageState extends State<EventEditPage>
         body: TabBarView(
           controller: _tab,
           children: [
-            // 编辑页:大纲 + 正文
-            ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            // 编辑页:大纲 + 正文 + 底部对话输入(历史在对话页)
+            Column(
               children: [
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    children: [
                 TextField(
                   controller: _outlineCtrl,
                   minLines: 2,
@@ -408,40 +416,83 @@ class _EventEditPageState extends State<EventEditPage>
                     border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(height: 4),
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: _contentCtrl,
-                  builder: (context, v, _) {
-                    final lineCount = v.text.isEmpty
-                        ? 0
-                        : '\n'.allMatches(v.text).length + 1;
-                    final s = v.selection;
-                    final selLen = s.isValid && !s.isCollapsed
-                        ? s.textInside(v.text).length
-                        : 0;
-                    return Row(
+                      const SizedBox(height: 4),
+                      ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _contentCtrl,
+                        builder: (context, v, _) {
+                          final lineCount = v.text.isEmpty
+                              ? 0
+                              : '\n'.allMatches(v.text).length + 1;
+                          final s = v.selection;
+                          final selLen = s.isValid && !s.isCollapsed
+                              ? s.textInside(v.text).length
+                              : 0;
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '$lineCount 行 · ${v.text.length} 字'
+                                  '${selLen > 0 ? ' · 已选中 $selLen 字,对话将附带选区' : ''}',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .outline),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.undo, size: 18),
+                                tooltip: '回退上一版(${_history.length})',
+                                onPressed:
+                                    _history.isEmpty ? null : _undo,
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                // 编辑页的快捷对话输入(不显示历史)
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border(
+                        top: BorderSide(
+                            color: Theme.of(context).dividerColor)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                    child: Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            '$lineCount 行 · ${v.text.length} 字'
-                            '${selLen > 0 ? ' · 已选中 $selLen 字,对话将附带选区' : ''}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .outline),
+                          child: TextField(
+                            controller: _chatCtrl,
+                            minLines: 1,
+                            maxLines: 3,
+                            decoration: const InputDecoration(
+                              hintText: '快捷指令:改动直接落在正文,详情见对话页',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            onSubmitted: (_) => _send(),
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.undo, size: 18),
-                          tooltip: '回退上一版(${_history.length})',
-                          onPressed: _history.isEmpty ? null : _undo,
+                        const SizedBox(width: 8),
+                        IconButton.filled(
+                          onPressed: _busy ? null : _send,
+                          icon: _busy
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2))
+                              : const Icon(Icons.send),
                         ),
                       ],
-                    );
-                  },
+                    ),
+                  ),
                 ),
               ],
             ),
