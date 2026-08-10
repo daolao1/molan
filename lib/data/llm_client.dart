@@ -275,6 +275,147 @@ class LlmClient {
     }
   }
 
+  /// 流式会话工具循环:文本增量经 [onDelta] 回调;工具调用照常执行。
+  /// 注意 web 调试端 http 可能整体到达(降级为非流),原生端为真流式。
+  static Future<String> chatTurnStream(
+    LlmSettings s, {
+    required List<Map<String, dynamic>> messages,
+    required List<Map<String, dynamic>> tools,
+    required Future<String> Function(String name, Map<String, dynamic> args)
+        onToolCall,
+    void Function(String delta)? onDelta,
+    void Function(String name)? onToolStart,
+    int maxRounds = 8,
+  }) async {
+    if (s.model.trim().isEmpty) {
+      throw LlmException('请先在设置中配置 LLM API 与模型');
+    }
+    try {
+      for (var round = 0; round < maxRounds; round++) {
+        final client = http.Client();
+        var contentBuf = '';
+        final toolAcc = <int, Map<String, String>>{};
+        try {
+          final req = http.Request(
+              'POST', Uri.parse('${_base(s)}/chat/completions'))
+            ..headers.addAll(_headers(s))
+            ..body = jsonEncode({
+              'model': s.model.trim(),
+              'messages': messages,
+              'tools': tools,
+              'stream': true,
+            });
+          final resp =
+              await client.send(req).timeout(const Duration(seconds: 60));
+          if (resp.statusCode == 400 || resp.statusCode == 404) {
+            throw ToolsUnsupportedException(
+                await resp.stream.bytesToString());
+          }
+          if (resp.statusCode != 200) {
+            throw LlmException(
+                'HTTP ${resp.statusCode}:${await resp.stream.bytesToString()}');
+          }
+          await for (final line in resp.stream
+              .transform(utf8.decoder)
+              .transform(const LineSplitter())
+              .timeout(const Duration(seconds: 120))) {
+            if (!line.startsWith('data:')) continue;
+            final payload = line.substring(5).trim();
+            if (payload.isEmpty || payload == '[DONE]') continue;
+            final Map<String, dynamic> j;
+            try {
+              j = jsonDecode(payload) as Map<String, dynamic>;
+            } catch (_) {
+              continue;
+            }
+            final delta = j['choices']?[0]?['delta'];
+            if (delta is! Map) continue;
+            final c = delta['content'];
+            if (c is String && c.isNotEmpty) {
+              contentBuf += c;
+              onDelta?.call(c);
+            }
+            final tcs = delta['tool_calls'];
+            if (tcs is List) {
+              for (final tc in tcs) {
+                if (tc is! Map) continue;
+                final idx = tc['index'] as int? ?? 0;
+                final acc = toolAcc.putIfAbsent(
+                    idx, () => {'id': '', 'name': '', 'args': ''});
+                if (tc['id'] is String) acc['id'] = tc['id'] as String;
+                final fn = tc['function'];
+                if (fn is Map) {
+                  if (fn['name'] is String) {
+                    acc['name'] = acc['name']! + (fn['name'] as String);
+                  }
+                  if (fn['arguments'] is String) {
+                    acc['args'] = acc['args']! + (fn['arguments'] as String);
+                  }
+                }
+              }
+            }
+          }
+        } finally {
+          client.close();
+        }
+        if (toolAcc.isNotEmpty) {
+          final calls = [
+            for (final i in toolAcc.keys.toList()..sort())
+              {
+                'id': toolAcc[i]!['id'],
+                'type': 'function',
+                'function': {
+                  'name': toolAcc[i]!['name'],
+                  'arguments': toolAcc[i]!['args'],
+                },
+              }
+          ];
+          messages.add({
+            'role': 'assistant',
+            if (contentBuf.isNotEmpty) 'content': contentBuf,
+            'tool_calls': calls,
+          });
+          for (final tc in calls) {
+            final fn = tc['function'] as Map<String, dynamic>;
+            final name = fn['name'] as String? ?? '';
+            onToolStart?.call(name);
+            Map<String, dynamic> args;
+            try {
+              final raw = fn['arguments'] as String? ?? '{}';
+              args = raw.trim().isEmpty
+                  ? {}
+                  : (jsonDecode(raw) as Map).cast<String, dynamic>();
+            } catch (_) {
+              args = {};
+            }
+            String result;
+            try {
+              result = await onToolCall(name, args);
+            } catch (e) {
+              result = '工具执行失败：$e';
+            }
+            messages.add({
+              'role': 'tool',
+              'tool_call_id': tc['id'] ?? '',
+              'content': result,
+            });
+          }
+          continue;
+        }
+        if (contentBuf.trim().isEmpty) {
+          throw LlmException('模型返回了空内容');
+        }
+        messages.add({'role': 'assistant', 'content': contentBuf});
+        return contentBuf;
+      }
+      throw LlmException('工具调用轮次超限,请重试');
+    } on ToolsUnsupportedException {
+      rethrow;
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
   /// 从模型回复中提取 JSON 对象(容忍围栏与前后缀);值保留原始类型
   static Map<String, dynamic> parseJsonReply(String text) {
     final t = text.trim();

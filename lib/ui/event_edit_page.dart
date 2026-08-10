@@ -41,7 +41,7 @@ class _ChatMsg {
         isChange = true;
 
   final bool isUser;
-  final String text;
+  String text;
   final bool isChange;
 
   /// 本轮改动前的快照(拒绝时恢复)
@@ -225,15 +225,53 @@ class _EventEditPageState extends State<EventEditPage>
         novelId: widget.novel.id,
         lookup: NovelToolExecutor(widget.db, widget.novel.id),
       );
-      final reply = await LlmClient.chatTurn(
-        settings,
-        messages: _messages,
-        tools: [...writingToolSchemas, ...novelToolSchemas],
-        onToolCall: executor.call,
-      );
+      // 流式气泡:首个 delta 到达时加入,后续逐字增长
+      _ChatMsg? streamMsg;
+      void applyDelta(String d) {
+        if (!mounted) return;
+        setState(() {
+          streamMsg ??= () {
+            final m = _ChatMsg(false, '');
+            _chatUi.add(m);
+            return m;
+          }();
+          streamMsg!.text += d;
+        });
+        _scrollChat();
+      }
+
+      String reply;
+      try {
+        reply = await LlmClient.chatTurnStream(
+          settings,
+          messages: _messages,
+          tools: [...writingToolSchemas, ...novelToolSchemas],
+          onToolCall: executor.call,
+          onDelta: applyDelta,
+          onToolStart: (name) {
+            if (!mounted) return;
+            setState(() {
+              // 工具轮之间新开气泡,避免后续文本接错位置
+              streamMsg = null;
+            });
+          },
+        );
+      } on ToolsUnsupportedException {
+        reply = await LlmClient.chatTurn(
+          settings,
+          messages: _messages,
+          tools: [...writingToolSchemas, ...novelToolSchemas],
+          onToolCall: executor.call,
+        );
+      }
       if (!mounted) return;
       setState(() {
-        _chatUi.add(_ChatMsg(false, reply.trim()));
+        // 用完整回复修正流式气泡(或补建)
+        if (streamMsg != null) {
+          streamMsg!.text = reply.trim();
+        } else {
+          _chatUi.add(_ChatMsg(false, reply.trim()));
+        }
         // 本轮有改动 → 压栈并插入变更卡
         final outlineChanged = snapshot.outline != _outlineCtrl.text;
         final contentChanged = snapshot.content != _contentCtrl.text;
