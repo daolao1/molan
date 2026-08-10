@@ -60,6 +60,17 @@ List<EntryField> entryFieldsFor(EntryKind kind) => switch (kind) {
       EntryKind.lore => _loreFields,
     };
 
+/// 把 AI 给的字段 key 归一到模板 key:支持直接用中文标签(如“性格”→personality)
+String normalizeFieldKey(EntryKind kind, String rawKey) {
+  final k = rawKey.trim();
+  for (final f in entryFieldsFor(kind)) {
+    if (f.key == k) return k;
+    // “别名/称号”这类复合标签,命中任一段即归一
+    if (f.label == k || f.label.split('/').contains(k)) return f.key;
+  }
+  return k;
+}
+
 /// content 为 JSON map;旧版纯文本数据归入备注
 Map<String, String> parseEntryContent(String content) {
   if (content.trim().isEmpty) return {};
@@ -80,12 +91,25 @@ String encodeEntryContent(Map<String, String> data) {
   return cleaned.isEmpty ? '' : jsonEncode(cleaned);
 }
 
+/// 模板外的扩展字段(AI 自定义 key),保持写入顺序
+Map<String, String> extensionFields(EntryKind kind, Map<String, String> data) {
+  final known = {for (final f in entryFieldsFor(kind)) f.key};
+  return {
+    for (final e in data.entries)
+      if (!known.contains(e.key)) e.key: e.value
+  };
+}
+
 /// 列表副标题:按模板顺序取第一个非空字段
 String entrySubtitle(Entry e) {
   final data = parseEntryContent(e.content);
-  for (final f in entryFieldsFor(EntryKind.values.byName(e.kind))) {
+  final kind = EntryKind.values.byName(e.kind);
+  for (final f in entryFieldsFor(kind)) {
     final v = data[f.key]?.trim() ?? '';
     if (v.isNotEmpty) return v;
+  }
+  for (final v in extensionFields(kind, data).values) {
+    if (v.trim().isNotEmpty) return v.trim();
   }
   return '';
 }
@@ -94,13 +118,18 @@ String entrySubtitle(Entry e) {
 String entryBrief(Entry e, {int maxLen = 80}) {
   final data = parseEntryContent(e.content);
   final buf = StringBuffer();
-  for (final f in entryFieldsFor(EntryKind.values.byName(e.kind))) {
-    final v = data[f.key]?.replaceAll('\n', ' ').trim() ?? '';
-    if (v.isEmpty) continue;
+  final kind = EntryKind.values.byName(e.kind);
+  void add(String? raw) {
+    final v = raw?.replaceAll('\n', ' ').trim() ?? '';
+    if (v.isEmpty || buf.length >= maxLen) return;
     if (buf.isNotEmpty) buf.write(';');
     buf.write(v);
-    if (buf.length >= maxLen) break;
   }
+
+  for (final f in entryFieldsFor(kind)) {
+    add(data[f.key]);
+  }
+  extensionFields(kind, data).values.forEach(add);
   final s = buf.toString();
   return s.length <= maxLen ? s : '${s.substring(0, maxLen)}…';
 }

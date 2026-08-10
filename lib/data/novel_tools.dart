@@ -81,6 +81,9 @@ class NovelToolExecutor {
       final v = data[f.key]?.trim() ?? '';
       if (v.isNotEmpty) buf.writeln('${f.label}:$v');
     }
+    for (final x in extensionFields(kind, data).entries) {
+      if (x.value.trim().isNotEmpty) buf.writeln('${x.key}:${x.value.trim()}');
+    }
     if (kind == EntryKind.character) {
       final nameOf = {for (final x in all) x.id: x.name};
       final rels = await db.relationsOfNovel(novelId);

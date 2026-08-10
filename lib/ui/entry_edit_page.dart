@@ -35,6 +35,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
   final _aiPromptCtrl = TextEditingController();
   late final List<EntryField> _fields = entryFieldsFor(widget.kind);
   late final Map<String, TextEditingController> _fieldCtrls;
+
+  /// AI 写入的模板外字段,可编辑可删
+  late Map<String, TextEditingController> _extCtrls;
   bool _dirty = false;
   bool _generating = false;
   late GenerationMode _genMode = widget.entry == null
@@ -64,6 +67,10 @@ class _EntryEditPageState extends State<EntryEditPage> {
     _fieldCtrls = {
       for (final f in _fields)
         f.key: TextEditingController(text: data[f.key] ?? '')
+    };
+    _extCtrls = {
+      for (final e in extensionFields(widget.kind, data).entries)
+        e.key: TextEditingController(text: e.value)
     };
     if (widget.kind == EntryKind.character) _loadRelations();
     if (widget.kind == EntryKind.lore) _loadLinks();
@@ -179,6 +186,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
     _nameCtrl.dispose();
     _aiPromptCtrl.dispose();
     for (final c in _fieldCtrls.values) {
+      c.dispose();
+    }
+    for (final c in _extCtrls.values) {
       c.dispose();
     }
     super.dispose();
@@ -412,12 +422,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
       _toast('名称不能为空', error: true);
       return;
     }
-    // 保留模板外的扩展字段(AI 自定义 key)
-    final original = parseEntryContent(widget.entry?.content ?? '');
-    final known = {for (final f in _fields) f.key};
+    // 清空即删除(encode 会剔除空值);模板与扩展字段一并写回
     final content = encodeEntryContent({
-      for (final e in original.entries)
-        if (!known.contains(e.key)) e.key: e.value,
+      for (final e in _extCtrls.entries) e.key: e.value.text,
       for (final e in _fieldCtrls.entries) e.key: e.value.text,
     });
     int entryId;
@@ -592,6 +599,28 @@ class _EntryEditPageState extends State<EntryEditPage> {
                   hintText: f.hint,
                   alignLabelWithHint: true,
                   border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
+            for (final e in _extCtrls.entries) ...[
+              const SizedBox(height: 16),
+              TextField(
+                controller: e.value,
+                maxLines: null,
+                minLines: 2,
+                onChanged: (_) => _dirty = true,
+                decoration: InputDecoration(
+                  labelText: '${e.key}(扩展)',
+                  alignLabelWithHint: true,
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: '删除此字段',
+                    onPressed: () => setState(() {
+                      _extCtrls.remove(e.key)?.dispose();
+                      _dirty = true;
+                    }),
+                  ),
                 ),
               ),
             ],

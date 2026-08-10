@@ -235,7 +235,11 @@ class WritingToolExecutor {
     final rawFields = args['fields'];
     if (rawFields is Map) {
       for (final e in rawFields.entries) {
-        if (e.value != null) fields[e.key.toString()] = e.value.toString();
+        if (e.value != null) {
+          // 中文标签 key 归一到模板 key,避免同义字段分家
+          fields[normalizeFieldKey(kind, e.key.toString())] =
+              e.value.toString();
+        }
       }
     }
     final newName = fields.remove('name')?.trim();
