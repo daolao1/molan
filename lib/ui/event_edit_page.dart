@@ -34,15 +34,24 @@ class EventEditPage extends StatefulWidget {
 class _ChatMsg {
   _ChatMsg(this.isUser, this.text)
       : isChange = false,
+        isTool = false,
         snapshot = null;
 
   _ChatMsg.change(this.text, this.snapshot)
       : isUser = false,
-        isChange = true;
+        isChange = true,
+        isTool = false;
+
+  _ChatMsg.tool(this.text)
+      : isUser = false,
+        isChange = false,
+        isTool = true,
+        snapshot = null;
 
   final bool isUser;
   String text;
   final bool isChange;
+  final bool isTool;
 
   /// 本轮改动前的快照(拒绝时恢复)
   final ({String outline, String content})? snapshot;
@@ -72,6 +81,20 @@ class _EventEditPageState extends State<EventEditPage>
   final List<({String outline, String content})> _history = [];
   bool _busy = false;
   bool _dirty = false;
+  bool _stopRequested = false;
+
+  static const _toolLabels = {
+    'read_content': '读取正文',
+    'replace_text': '修改文字',
+    'append_text': '续写正文',
+    'set_content': '重写全文',
+    'read_outline': '读取大纲',
+    'set_outline': '更新大纲',
+    'upsert_entry': '更新设定',
+    'get_entry_detail': '查阅设定',
+    'list_entries': '列出条目',
+    'get_relations': '查人物关系',
+  };
 
   PageSnapshot _ctxProvider() => PageSnapshot(
         novelId: widget.novel.id,
@@ -189,6 +212,7 @@ class _EventEditPageState extends State<EventEditPage>
     }
     setState(() {
       _busy = true;
+      _stopRequested = false;
       // 新一轮开始:未处理的变更卡视为接受
       for (final m in _chatUi) {
         if (m.isChange && m.reviewed == null) m.reviewed = true;
@@ -225,6 +249,20 @@ class _EventEditPageState extends State<EventEditPage>
         novelId: widget.novel.id,
         lookup: NovelToolExecutor(widget.db, widget.novel.id),
       );
+      // 工具调用过程在对话流中可见
+      Future<String> loggedCall(String name, Map<String, dynamic> args) async {
+        final label = _toolLabels[name] ?? name;
+        final log = _ChatMsg.tool('⚙ $label…');
+        if (mounted) setState(() => _chatUi.add(log));
+        _scrollChat();
+        final result = await executor.call(name, args);
+        if (mounted) {
+          setState(() => log.text =
+              '⚙ $label:${result.length > 60 ? '${result.substring(0, 60)}…' : result}');
+        }
+        return result;
+      }
+
       // 流式气泡:首个 delta 到达时加入,后续逐字增长
       _ChatMsg? streamMsg;
       void applyDelta(String d) {
@@ -246,8 +284,9 @@ class _EventEditPageState extends State<EventEditPage>
           settings,
           messages: _messages,
           tools: [...writingToolSchemas, ...novelToolSchemas],
-          onToolCall: executor.call,
+          onToolCall: loggedCall,
           onDelta: applyDelta,
+          shouldStop: () => _stopRequested,
           onToolStart: (name) {
             if (!mounted) return;
             setState(() {
@@ -261,7 +300,7 @@ class _EventEditPageState extends State<EventEditPage>
           settings,
           messages: _messages,
           tools: [...writingToolSchemas, ...novelToolSchemas],
-          onToolCall: executor.call,
+          onToolCall: loggedCall,
         );
       }
       if (!mounted) return;
@@ -293,6 +332,10 @@ class _EventEditPageState extends State<EventEditPage>
         _toast(brief.length <= 80 ? brief : '${brief.substring(0, 80)}…（详情见对话页）');
       }
       _scrollChat();
+    } on LlmCancelledException {
+      if (mounted) {
+        setState(() => _chatUi.add(_ChatMsg.tool('⏹ 已停止')));
+      }
     } on LlmException catch (e) {
       _toast(e.message, error: true);
     } catch (e) {
@@ -519,14 +562,11 @@ class _EventEditPageState extends State<EventEditPage>
                         ),
                         const SizedBox(width: 8),
                         IconButton.filled(
-                          onPressed: _busy ? null : _send,
-                          icon: _busy
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2))
-                              : const Icon(Icons.send),
+                          onPressed: _busy
+                              ? () => setState(() => _stopRequested = true)
+                              : _send,
+                          icon: Icon(_busy ? Icons.stop : Icons.send),
+                          tooltip: _busy ? '停止' : '发送',
                         ),
                       ],
                     ),
@@ -616,6 +656,20 @@ class _EventEditPageState extends State<EventEditPage>
                   itemBuilder: (context, i) {
                     final m = _chatUi[i];
                     if (m.isChange) return _changeCard(context, m);
+                    if (m.isTool) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text(
+                          m.text,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                                  color:
+                                      Theme.of(context).colorScheme.outline),
+                        ),
+                      );
+                    }
                     return Align(
                       alignment: m.isUser
                           ? Alignment.centerRight
@@ -670,13 +724,11 @@ class _EventEditPageState extends State<EventEditPage>
                 ),
                 const SizedBox(width: 8),
                 IconButton.filled(
-                  onPressed: _busy ? null : _send,
-                  icon: _busy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.send),
+                  onPressed: _busy
+                      ? () => setState(() => _stopRequested = true)
+                      : _send,
+                  icon: Icon(_busy ? Icons.stop : Icons.send),
+                  tooltip: _busy ? '停止' : '发送',
                 ),
               ],
             ),

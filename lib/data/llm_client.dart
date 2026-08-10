@@ -18,6 +18,11 @@ class ToolsUnsupportedException extends LlmException {
   ToolsUnsupportedException(super.message);
 }
 
+/// 用户主动停止生成
+class LlmCancelledException extends LlmException {
+  LlmCancelledException() : super('已停止');
+}
+
 class LlmClient {
   static const _timeout = Duration(seconds: 20);
 
@@ -208,7 +213,7 @@ class LlmClient {
     required List<Map<String, dynamic>> tools,
     required Future<String> Function(String name, Map<String, dynamic> args)
         onToolCall,
-    int maxRounds = 8,
+    int maxRounds = 1000,
   }) async {
     if (s.model.trim().isEmpty) {
       throw LlmException('请先在设置中配置 LLM API 与模型');
@@ -285,13 +290,16 @@ class LlmClient {
         onToolCall,
     void Function(String delta)? onDelta,
     void Function(String name)? onToolStart,
-    int maxRounds = 8,
+    bool Function()? shouldStop,
+    int maxRounds = 1000,
   }) async {
     if (s.model.trim().isEmpty) {
       throw LlmException('请先在设置中配置 LLM API 与模型');
     }
+    bool stopped() => shouldStop?.call() ?? false;
     try {
       for (var round = 0; round < maxRounds; round++) {
+        if (stopped()) throw LlmCancelledException();
         final client = http.Client();
         var contentBuf = '';
         final toolAcc = <int, Map<String, String>>{};
@@ -319,6 +327,13 @@ class LlmClient {
               .transform(utf8.decoder)
               .transform(const LineSplitter())
               .timeout(const Duration(seconds: 120))) {
+            if (stopped()) {
+              // 保留已流出的文本到记忆,丢弃未完成的工具轮
+              if (contentBuf.trim().isNotEmpty && toolAcc.isEmpty) {
+                messages.add({'role': 'assistant', 'content': contentBuf});
+              }
+              throw LlmCancelledException();
+            }
             if (!line.startsWith('data:')) continue;
             final payload = line.substring(5).trim();
             if (payload.isEmpty || payload == '[DONE]') continue;
@@ -378,6 +393,15 @@ class LlmClient {
           for (final tc in calls) {
             final fn = tc['function'] as Map<String, dynamic>;
             final name = fn['name'] as String? ?? '';
+            if (stopped()) {
+              // 补齐剩余工具结果保持协议完整,再中止
+              messages.add({
+                'role': 'tool',
+                'tool_call_id': tc['id'] ?? '',
+                'content': '(用户中止)',
+              });
+              continue;
+            }
             onToolStart?.call(name);
             Map<String, dynamic> args;
             try {
@@ -400,6 +424,7 @@ class LlmClient {
               'content': result,
             });
           }
+          if (stopped()) throw LlmCancelledException();
           continue;
         }
         if (contentBuf.trim().isEmpty) {
