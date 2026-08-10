@@ -47,6 +47,12 @@ class LlmClient {
     throw LlmException(msg);
   }
 
+  /// 安全取 choices[0]:部分服务会返回空 choices 帧(如流式末尾的 usage 块)
+  static dynamic _firstChoice(dynamic data) {
+    final choices = data is Map ? data['choices'] : null;
+    return (choices is List && choices.isNotEmpty) ? choices[0] : null;
+  }
+
   /// 拉取可用模型列表(GET /models)
   static Future<List<String>> fetchModels(LlmSettings s) async {
     try {
@@ -116,7 +122,7 @@ class LlmClient {
         throw LlmException('HTTP ${resp.statusCode}:${_errorText(resp)}');
       }
       final data = jsonDecode(utf8.decode(resp.bodyBytes));
-      final content = data['choices']?[0]?['message']?['content'] as String?;
+      final content = _firstChoice(data)?['message']?['content'] as String?;
       if (content == null || content.trim().isEmpty) {
         throw LlmException('模型返回了空内容');
       }
@@ -162,7 +168,7 @@ class LlmClient {
           throw LlmException('HTTP ${resp.statusCode}：${_errorText(resp)}');
         }
         final data = jsonDecode(utf8.decode(resp.bodyBytes));
-        final msg = data['choices']?[0]?['message'] as Map<String, dynamic>?;
+        final msg = _firstChoice(data)?['message'] as Map<String, dynamic>?;
         if (msg == null) throw LlmException('模型返回格式异常');
         final toolCalls = msg['tool_calls'] as List?;
         if (toolCalls == null || toolCalls.isEmpty) {
@@ -236,7 +242,7 @@ class LlmClient {
           throw LlmException('HTTP ${resp.statusCode}:${_errorText(resp)}');
         }
         final data = jsonDecode(utf8.decode(resp.bodyBytes));
-        final msg = data['choices']?[0]?['message'] as Map<String, dynamic>?;
+        final msg = _firstChoice(data)?['message'] as Map<String, dynamic>?;
         if (msg == null) throw LlmException('模型返回格式异常');
         messages.add(msg);
         final toolCalls = msg['tool_calls'] as List?;
@@ -343,7 +349,7 @@ class LlmClient {
             } catch (_) {
               continue;
             }
-            final delta = j['choices']?[0]?['delta'];
+            final delta = _firstChoice(j)?['delta'];
             if (delta is! Map) continue;
             final c = delta['content'];
             if (c is String && c.isNotEmpty) {
