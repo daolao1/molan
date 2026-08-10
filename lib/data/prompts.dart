@@ -8,7 +8,6 @@ import 'entry_fields.dart';
 String writingAgentSystem({
   required Novel novel,
   required List<Entry> allEntries,
-  required List<CharacterRelation> relations,
   required List<EntryLink> links,
   required String chapterTitle,
   required List<String> priorOutlines,
@@ -25,7 +24,7 @@ String writingAgentSystem({
 - set_content:整体重写,仅当作者明确要求推翻重写时使用
 - read_outline / set_outline:读写本事件大纲;情节实际走向与大纲不符时主动同步大纲
 - set_highlight:在作者的编辑器里高亮标记一段原文(不改动正文),用于帮作者定位(如“帮我找到写雨的那段”“哪句最奸”);传空字符串清除高亮
-- upsert_entry:新增或更新设定卡,可更新一切:fields 任意 key、fields.name 改名、parent 挂场景到地点、relations 记人物间关系、links 记本卡片→其他卡片的定向关联(带描述、同对可多条,如人物→地点“幼年在此学艺”);写作中的新设定、人物变化及时记录
+- upsert_entry:新增或更新设定卡,可更新一切:fields 任意 key、fields.name 改名、links 记本卡片→其他卡片的定向关联(带描述、同对可多条;人物关系、场景归属、物品持有等一律用它,如人物→人物“师徒”、场景→地点“位于”);写作中的新设定、人物变化及时记录
 - get_entry_detail / list_entries:检索小说设定(人物详情含其全部关系),确保人物言行与设定一致
 
 作者高亮机制:
@@ -42,7 +41,7 @@ String writingAgentSystem({
 - 中文写作
 
 【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
-${_novelContext(allEntries, relations, links)}
+${_novelContext(allEntries, links)}
 【当前章节】$chapterTitle
 【本章此前事件大纲】${priorOutlines.isEmpty ? '(本事件是本章第一个事件)' : '\n${priorOutlines.map((o) => '- $o').join('\n')}'}
 【前文结尾】${prevContentTail.isEmpty ? '(无)' : '\n…$prevContentTail'}
@@ -89,14 +88,13 @@ $kindFields
 String assistantChangesUser({
   required Novel novel,
   required List<Entry> allEntries,
-  required List<CharacterRelation> relations,
   required List<EntryLink> links,
   required String pageDetail,
   required String instruction,
 }) =>
     '''
 【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
-${_novelContext(allEntries, relations, links)}
+${_novelContext(allEntries, links)}
 【当前界面】$pageDetail
 【用户指令】$instruction
 ''';
@@ -123,13 +121,8 @@ String entryGenerationSystem(EntryKind kind,
       ? '''
 - 作答前先用工具检索:用 get_entry_detail 查看与【生成要求】相关条目的完整设定(人物详情含其关系);最多检索 4 次,查完再输出最终 JSON'''
       : '';
-  final relNote = kind == EntryKind.character
-      ? '''
-- 可额外返回 "relations":[{"target":"人物名","label":"关系"}] 描述本人物与其他人物的关系;target 必须是【现有设定】中已存在的人物名,禁止虚构;label 用 2~6 字(如:师徒、血仇、青梅竹马);没有合适对象就不返回该 key'''
-      : kind == EntryKind.lore
-          ? '''
-- 可额外返回 "related":["卡片名"] 列出与本设定相关的已有卡片(人物/地点/物品/场景/设定);名字必须取自【现有设定】,禁止虚构;没有就不返回该 key'''
-          : '';
+  final relNote = '''
+- 可额外返回 "links":[{"to":"卡片名","label":"关联描述"}] 记录本卡与其他卡片的定向关联(人物关系、场景归属、物品持有等都用它);to 必须是【现有设定】中已存在的卡片名,禁止虚构;label 简短(如:师徒、位于、随身佩带);没有合适对象就不返回该 key''';
   final common = '''
 - 只输出一个 JSON 对象,禁止输出任何解释、前后缀或代码围栏
 - 可用的 key:"name"(名称)、$keys
@@ -162,9 +155,8 @@ $common
 /// 每类条目注入上下文的数量上限(防止提示词过长)
 const _maxEntriesPerKind = 15;
 
-/// 现有设定摘要:五类条目 + 人物关系网 + 设定关联
-String _novelContext(List<Entry> allEntries,
-    List<CharacterRelation> relations, List<EntryLink> links) {
+/// 现有设定摘要:五类条目 + 定向关联网
+String _novelContext(List<Entry> allEntries, List<EntryLink> links) {
   final buf = StringBuffer();
   final nameOf = {for (final e in allEntries) e.id: e.name};
   final linksOf = <int, List<String>>{};
@@ -174,7 +166,7 @@ String _novelContext(List<Entry> allEntries,
     final label = l.label.trim();
     final brief = label.isEmpty
         ? to
-        : '$to(${label.length <= 15 ? label : '${label.substring(0, 15)}…'})';
+        : '→$label→$to';
     (linksOf[l.fromEntryId] ??= []).add(brief);
   }
   for (final kind in EntryKind.values) {
@@ -186,26 +178,14 @@ String _novelContext(List<Entry> allEntries,
     buf.writeln('【已有${kind.label}】(${list.length}个)');
     for (final e in list.take(_maxEntriesPerKind)) {
       final brief = entryBrief(e);
-      final parent = e.parentId == null ? '' : '(属于:${nameOf[e.parentId]})';
       final linked = linksOf[e.id] == null
           ? ''
           : '(关联:${linksOf[e.id]!.join('、')})';
-      buf.writeln(
-          '- ${e.name}$parent$linked${brief.isEmpty ? '' : ':$brief'}');
+      buf.writeln('- ${e.name}$linked${brief.isEmpty ? '' : ':$brief'}');
     }
     if (list.length > _maxEntriesPerKind) {
       buf.writeln(
           '- (另有 ${list.length - _maxEntriesPerKind} 个:${list.skip(_maxEntriesPerKind).map((e) => e.name).join('、')})');
-    }
-  }
-  if (relations.isNotEmpty) {
-    buf.writeln('【人物关系】');
-    for (final r in relations) {
-      final from = nameOf[r.fromEntryId];
-      final to = nameOf[r.toEntryId];
-      if (from != null && to != null) {
-        buf.writeln('- $from →${r.label}→ $to');
-      }
     }
   }
   return buf.isEmpty ? '(暂无任何设定)' : buf.toString().trimRight();
@@ -220,12 +200,12 @@ String loreGenerationSystem({bool withTools = false}) {
 你是资深小说设定师,负责为小说批量生成世界观设定条目。
 
 输出要求:
-- 只输出一个 JSON 数组,形如 [{"name":"条目名","detail":"条目内容","related":["卡片名"]},…],禁止任何其他文字或代码围栏
+- 只输出一个 JSON 数组,形如 [{"name":"条目名","detail":"条目内容","links":[{"to":"卡片名","label":"描述"}]},…],禁止任何其他文字或代码围栏
 - 条目数量严格跟随【生成要求】的语义:只提了一个主题就返回 1 条;明确列出多个主题(如用顿号、分号分隔)或指定了数量时,才按对应数量返回
 - 不要自行把一个主题拆成多条,也不要主动补充未要求的设定
-- 每条内容聚焦自身主题、独立自洽:不要在 detail 中复述或混入其他设定的内容,与其他卡片的联系仅通过 related 字段表达
+- 每条内容聚焦自身主题、独立自洽:不要在 detail 中复述或混入其他设定的内容,与其他卡片的联系仅通过 links 字段表达
 - name 简短(2~10 字),detail 100~300 字,具体可直接用于写作
-- related 可选:列出与该条相关的已有卡片名(必须取自【现有设定】,禁止虚构)
+- links 可选:[{"to":"已有卡片名","label":"关联描述"}](to 必须取自【现有设定】,禁止虚构)
 - 不与已有设定重名,严禁与现有设定矛盾$toolNote
 - 全部用中文撰写
 ''';
@@ -235,13 +215,12 @@ String loreGenerationSystem({bool withTools = false}) {
 String loreGenerationUser({
   required Novel novel,
   required List<Entry> allEntries,
-  required List<CharacterRelation> relations,
   required List<EntryLink> links,
   required String request,
 }) =>
     '''
 【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
-${_novelContext(allEntries, relations, links)}
+${_novelContext(allEntries, links)}
 【生成要求】$request
 ''';
 
@@ -250,12 +229,10 @@ String entryGenerationUser({
   required Novel novel,
   required EntryKind kind,
   required List<Entry> allEntries,
-  required List<CharacterRelation> relations,
   required List<EntryLink> links,
   required String currentName,
   required Map<String, String> currentData,
   required String request,
-  String? parentLocation,
 }) {
   final fields = entryFieldsFor(kind);
   final filled = [
@@ -264,13 +241,10 @@ String entryGenerationUser({
       if ((currentData[f.key] ?? '').trim().isNotEmpty)
         '${f.label}:${currentData[f.key]!.trim()}',
   ];
-  final creating = parentLocation == null
-      ? kind.label
-      : '${kind.label}(属于地点:$parentLocation)';
   return '''
 【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
-${_novelContext(allEntries, relations, links)}
-【正在创建】$creating
+${_novelContext(allEntries, links)}
+【正在创建】${kind.label}
 【已填写的字段】${filled.isEmpty ? '(无)' : '\n${filled.join('\n')}'}
 【生成要求】$request
 ''';

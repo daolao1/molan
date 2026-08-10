@@ -99,7 +99,7 @@ const writingToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'upsert_entry',
-      'description': '新增或更新一张设定卡:同名合并字段,不存在则创建。fields 可用任意 key(模板外的也会保存);fields.name 可改名;parent 可指定场景所属地点',
+      'description': '新增或更新一张设定卡:同名合并字段,不存在则创建。fields 可用任意 key(模板外的也会保存);fields.name 可改名;links 记录与其他卡片的定向关联',
       'parameters': {
         'type': 'object',
         'properties': {
@@ -112,27 +112,10 @@ const writingToolSchemas = [
             'type': 'object',
             'description': '字段内容,任意 key;更新时只给需修改的;含 "name" 时表示改名',
           },
-          'parent': {
-            'type': 'string',
-            'description': '仅场景可用:所属地点名(必须已存在)',
-          },
-          'relations': {
-            'type': 'array',
-            'description':
-                '仅人物可用:与其他人物的定向关系 [{"to":"人物名","label":"关系 2~6 字"}],逐条新增或更新;to 必须已存在',
-            'items': {
-              'type': 'object',
-              'properties': {
-                'to': {'type': 'string'},
-                'label': {'type': 'string'},
-              },
-              'required': ['to', 'label'],
-            },
-          },
           'links': {
             'type': 'array',
             'description':
-                '从本卡片指向其他卡片的定向关联 [{"to":"卡片名","label":"关联描述"}];同一对卡片可有多条不同描述的关联;to 必须已存在(人物/地点/物品/场景/设定均可)',
+                '从本卡片指向其他卡片的定向关联 [{"to":"卡片名","label":"关联描述"}];人物关系、场景归属(label“位于”)、物品持有等都用它;同一对卡片可有多条;to 必须已存在',
             'items': {
               'type': 'object',
               'properties': {
@@ -256,20 +239,9 @@ class WritingToolExecutor {
       }
     }
     final newName = fields.remove('name')?.trim();
-    // 场景可指定所属地点
-    int? parentId;
-    final parentName = args['parent']?.toString().trim() ?? '';
     final all = await db.allEntriesOf(novelId);
-    if (parentName.isNotEmpty) {
-      for (final e in all) {
-        if (e.kind == EntryKind.location.name && e.name == parentName) {
-          parentId = e.id;
-          break;
-        }
-      }
-      if (parentId == null) return '失败:未找到地点「$parentName」';
-    }
-    if (fields.isEmpty && newName == null && parentId == null) {
+    final hasLinks = args['links'] is List && (args['links'] as List).isNotEmpty;
+    if (fields.isEmpty && newName == null && !hasLinks) {
       return '失败:没有可更新的内容';
     }
     Entry? target;
@@ -281,24 +253,19 @@ class WritingToolExecutor {
     }
     if (target == null) {
       final id = await db.createEntry(
-          novelId, kind, newName ?? name, encodeEntryContent(fields),
-          parentId: parentId);
-      final relNote = await _applyRelations(id, args['relations'], all);
+          novelId, kind, newName ?? name, encodeEntryContent(fields));
       final linkNote = await _applyLinks(id, args['links'], all);
-      return '已创建${kind.label}「${newName ?? name}」$relNote$linkNote';
+      return '已创建${kind.label}「${newName ?? name}」$linkNote';
     }
     final merged = parseEntryContent(target.content)..addAll(fields);
     await db.updateEntry(
-        target.id, newName ?? target.name, encodeEntryContent(merged),
-        parentId: parentId);
-    final relNote = await _applyRelations(target.id, args['relations'], all);
+        target.id, newName ?? target.name, encodeEntryContent(merged));
     final linkNote = await _applyLinks(target.id, args['links'], all);
     final parts = [
       if (fields.isNotEmpty) '字段:${fields.keys.join('、')}',
       if (newName != null) '改名为「$newName」',
-      if (parentId != null) '所属地点:$parentName',
     ];
-    return '已更新${kind.label}「$name」(${parts.join(';')})$relNote$linkNote';
+    return '已更新${kind.label}「$name」(${parts.join(';')})$linkNote';
   }
 
   /// 逐条 upsert 通用关联;返回结果尾注
@@ -328,38 +295,6 @@ class WritingToolExecutor {
     final notes = [
       if (ok > 0) '关联×$ok',
       if (missed.isNotEmpty) '未找到卡片:${missed.join('、')}',
-    ];
-    return notes.isEmpty ? '' : ';${notes.join(';')}';
-  }
-
-  /// 逐条 upsert 人物关系;返回结果尾注
-  Future<String> _applyRelations(
-      int fromId, Object? raw, List<Entry> all) async {
-    if (raw is! List || raw.isEmpty) return '';
-    var ok = 0;
-    final missed = <String>[];
-    for (final r in raw) {
-      if (r is! Map) continue;
-      final to = r['to']?.toString().trim() ?? '';
-      final label = r['label']?.toString().trim() ?? '';
-      if (to.isEmpty || label.isEmpty) continue;
-      Entry? toE;
-      for (final e in all) {
-        if (e.kind == EntryKind.character.name && e.name == to) {
-          toE = e;
-          break;
-        }
-      }
-      if (toE == null) {
-        missed.add(to);
-        continue;
-      }
-      await db.upsertRelation(fromId, toE.id, label);
-      ok++;
-    }
-    final notes = [
-      if (ok > 0) '关系×$ok',
-      if (missed.isNotEmpty) '未找到人物:${missed.join('、')}',
     ];
     return notes.isEmpty ? '' : ';${notes.join(';')}';
   }

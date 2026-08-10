@@ -15,16 +15,12 @@ class EntryEditPage extends StatefulWidget {
       required this.db,
       required this.novel,
       required this.kind,
-      this.entry,
-      this.parentId});
+      this.entry});
 
   final AppDatabase db;
   final Novel novel;
   final EntryKind kind;
   final Entry? entry;
-
-  /// 场景所属地点的条目 id
-  final int? parentId;
 
   @override
   State<EntryEditPage> createState() => _EntryEditPageState();
@@ -48,13 +44,8 @@ class _EntryEditPageState extends State<EntryEditPage> {
   ({
     String name,
     Map<String, String> fields,
-    List<({int toId, String label})> relations
+    List<({int toId, String label})> links
   })? _snapshot;
-
-  // 人物关系(仅 character):内存暂存,保存时同步入库
-  List<Entry> _allCharacters = const [];
-  final List<({int toId, String label})> _relations = [];
-  List<CharacterRelation> _incoming = const [];
 
   // 通用关联(所有类型):内存暂存,保存时同步入库
   List<Entry> _allEntries = const [];
@@ -73,7 +64,6 @@ class _EntryEditPageState extends State<EntryEditPage> {
       for (final e in extensionFields(widget.kind, data).entries)
         e.key: TextEditingController(text: e.value)
     };
-    if (widget.kind == EntryKind.character) _loadRelations();
     _loadLinks();
     AppContextRegistry.push(_ctxProvider);
   }
@@ -197,31 +187,6 @@ class _EntryEditPageState extends State<EntryEditPage> {
     }
   }
 
-  Future<void> _loadRelations() async {
-    final chars = await widget.db.charactersOf(widget.novel.id);
-    final from = widget.entry == null
-        ? <CharacterRelation>[]
-        : await widget.db.relationsFrom(widget.entry!.id);
-    final to = widget.entry == null
-        ? <CharacterRelation>[]
-        : await widget.db.relationsTo(widget.entry!.id);
-    if (!mounted) return;
-    setState(() {
-      _allCharacters = chars;
-      _relations
-        ..clear()
-        ..addAll([for (final r in from) (toId: r.toEntryId, label: r.label)]);
-      _incoming = to;
-    });
-  }
-
-  String _charName(int id) {
-    for (final c in _allCharacters) {
-      if (c.id == id) return c.name;
-    }
-    return '未知人物';
-  }
-
   @override
   void dispose() {
     AppContextRegistry.pop(_ctxProvider);
@@ -247,25 +212,17 @@ class _EntryEditPageState extends State<EntryEditPage> {
     try {
       final settings = await SettingsStore.loadFor(LlmPurpose.lore);
       final all = await widget.db.allEntriesOf(widget.novel.id);
-      final rels = await widget.db.relationsOfNovel(widget.novel.id);
       final links = await widget.db.linksOfNovel(widget.novel.id);
       final userMsg = entryGenerationUser(
         novel: widget.novel,
         kind: widget.kind,
         allEntries: all,
-        relations: rels,
         links: links,
         currentName: _nameCtrl.text,
         currentData: {
           for (final e in _fieldCtrls.entries) e.key: e.value.text
         },
         request: request,
-        parentLocation: widget.parentId == null
-            ? null
-            : all
-                .where((e) => e.id == widget.parentId)
-                .map((e) => e.name)
-                .firstOrNull,
       );
       String reply;
       try {
@@ -297,7 +254,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
       final snapshot = (
         name: _nameCtrl.text,
         fields: {for (final e in _fieldCtrls.entries) e.key: e.value.text},
-        relations: List.of(_relations),
+        links: List.of(_links),
       );
       var addedRels = 0;
       setState(() {
@@ -308,37 +265,21 @@ class _EntryEditPageState extends State<EntryEditPage> {
           final v = textOf(f.key) ?? '';
           if (v.isNotEmpty) _fieldCtrls[f.key]!.text = v;
         }
-        // AI 返回的关系:按名字匹配已有人物,失配/重复的丢弃
-        final rels = data['relations'];
-        if (widget.kind == EntryKind.character && rels is List) {
-          for (final r in rels) {
+        // AI 返回的关联:按名字匹配已有卡片,失配/重复的丢弃
+        final lks = data['links'];
+        if (lks is List) {
+          for (final r in lks) {
             if (r is! Map) continue;
-            final target = r['target']?.toString().trim() ?? '';
+            final target =
+                (r['to'] ?? r['target'])?.toString().trim() ?? '';
             final label = r['label']?.toString().trim() ?? '';
-            if (target.isEmpty || label.isEmpty) continue;
-            for (final c in _allCharacters) {
-              if (c.name == target && c.id != widget.entry?.id) {
-                final dup = _relations
-                    .any((x) => x.toId == c.id && x.label == label);
-                if (!dup) {
-                  _relations.add((toId: c.id, label: label));
-                  addedRels++;
-                }
-                break;
-              }
-            }
-          }
-        }
-        // AI 返回的关联卡片(仅 lore):按名字匹配
-        final related = data['related'];
-        if (widget.kind == EntryKind.lore && related is List) {
-          for (final r in related) {
-            final name = r?.toString().trim() ?? '';
-            if (name.isEmpty) continue;
+            if (target.isEmpty) continue;
             for (final e in _allEntries) {
-              if (e.name == name && e.id != widget.entry?.id) {
-                if (!_links.any((l) => l.toId == e.id)) {
-                  _links.add((toId: e.id, label: ''));
+              if (e.name == target && e.id != widget.entry?.id) {
+                final dup = _links
+                    .any((x) => x.toId == e.id && x.label == label);
+                if (!dup) {
+                  _links.add((toId: e.id, label: label));
                   addedRels++;
                 }
                 break;
@@ -395,8 +336,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
     final selected = <String>{...?editing?.by};
     // 可选使用者 = 其他人物 ∪ 已有的非卡片名字(AI 写入的)
     final names = <String>{
-      for (final c in _allCharacters)
-        if (c.id != widget.entry?.id) c.name,
+      for (final c in _allEntries)
+        if (c.kind == EntryKind.character.name && c.id != widget.entry?.id)
+          c.name,
       ...selected,
     }.toList();
     final ok = await showDialog<bool>(
@@ -468,71 +410,6 @@ class _EntryEditPageState extends State<EntryEditPage> {
     }
   }
 
-  /// index 为 null 时新增,否则编辑第 index 条关系
-  Future<void> _editRelation({int? index}) async {
-    final others = [
-      for (final c in _allCharacters)
-        if (c.id != widget.entry?.id) c
-    ];
-    if (others.isEmpty) {
-      _toast('本小说还没有其他人物,先去创建吧', error: true);
-      return;
-    }
-    final editing = index != null ? _relations[index] : null;
-    var targetId = editing?.toId ?? others.first.id;
-    if (!others.any((c) => c.id == targetId)) targetId = others.first.id;
-    final labelCtrl = TextEditingController(text: editing?.label ?? '');
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(editing == null ? '添加关系' : '编辑关系'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<int>(
-              initialValue: targetId,
-              decoration: const InputDecoration(
-                  labelText: '目标人物', border: OutlineInputBorder()),
-              items: [
-                for (final c in others)
-                  DropdownMenuItem(value: c.id, child: Text(c.name)),
-              ],
-              onChanged: (v) => targetId = v ?? targetId,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: labelCtrl,
-              autofocus: editing == null,
-              decoration: const InputDecoration(
-                  labelText: '关系',
-                  hintText: '师徒 / 宿敌 / 青梅竹马 / 暗恋…',
-                  border: OutlineInputBorder()),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(editing == null ? '添加' : '保存')),
-        ],
-      ),
-    );
-    if (ok == true && labelCtrl.text.trim().isNotEmpty) {
-      setState(() {
-        final rel = (toId: targetId, label: labelCtrl.text.trim());
-        if (index == null) {
-          _relations.add(rel);
-        } else {
-          _relations[index] = rel;
-        }
-        _dirty = true;
-      });
-    }
-  }
-
   void _acceptGeneration() {
     setState(() => _snapshot = null);
     _toast('已接受,记得保存');
@@ -546,9 +423,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
       for (final e in s.fields.entries) {
         _fieldCtrls[e.key]?.text = e.value;
       }
-      _relations
+      _links
         ..clear()
-        ..addAll(s.relations);
+        ..addAll(s.links);
       _snapshot = null;
     });
     _toast('已恢复生成前的内容');
@@ -579,14 +456,10 @@ class _EntryEditPageState extends State<EntryEditPage> {
     int entryId;
     if (widget.entry == null) {
       entryId = await widget.db.createEntry(
-          widget.novel.id, widget.kind, name, content,
-          parentId: widget.parentId);
+          widget.novel.id, widget.kind, name, content);
     } else {
       entryId = widget.entry!.id;
       await widget.db.updateEntry(entryId, name, content);
-    }
-    if (widget.kind == EntryKind.character) {
-      await widget.db.replaceRelationsFrom(entryId, _relations);
     }
     await widget.db.replaceLinksFrom(entryId, _links);
     if (mounted) Navigator.pop(context);
@@ -819,142 +692,6 @@ class _EntryEditPageState extends State<EntryEditPage> {
                             }),
                           ),
                         ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text('人物关系',
-                                style:
-                                    Theme.of(context).textTheme.titleSmall),
-                          ),
-                          TextButton.icon(
-                            onPressed: () => _editRelation(),
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('添加'),
-                          ),
-                        ],
-                      ),
-                      if (_relations.isEmpty && _incoming.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Text('还没有关系,点右上角添加'),
-                        ),
-                      for (var i = 0; i < _relations.length; i++)
-                        ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.arrow_forward, size: 18),
-                          title: Text(
-                              '${_relations[i].label} → ${_charName(_relations[i].toId)}'),
-                          onTap: () => _editRelation(index: i),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, size: 20),
-                            tooltip: '删除',
-                            onPressed: () => setState(() {
-                              _relations.removeAt(i);
-                              _dirty = true;
-                            }),
-                          ),
-                        ),
-                      for (final r in _incoming)
-                        ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.arrow_back, size: 18),
-                          title: Text(
-                              '${_charName(r.fromEntryId)} 的「${r.label}」'),
-                          subtitle: const Text('由对方添加,在对方卡片中管理'),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-            if (widget.kind == EntryKind.location && widget.entry != null) ...[
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text('本地点的场景',
-                                style:
-                                    Theme.of(context).textTheme.titleSmall),
-                          ),
-                          TextButton.icon(
-                            onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => EntryEditPage(
-                                  db: widget.db,
-                                  novel: widget.novel,
-                                  kind: EntryKind.scene,
-                                  parentId: widget.entry!.id,
-                                ),
-                              ),
-                            ),
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('添加场景'),
-                          ),
-                        ],
-                      ),
-                      StreamBuilder<List<Entry>>(
-                        stream: widget.db.watchScenesOf(widget.entry!.id),
-                        builder: (context, snapshot) {
-                          final scenes = snapshot.data ?? const [];
-                          if (scenes.isEmpty) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 8),
-                              child: Text('还没有场景,点右上角添加'),
-                            );
-                          }
-                          return Column(
-                            children: [
-                              for (final s in scenes)
-                                ListTile(
-                                  dense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: Icon(EntryKind.scene.icon,
-                                      size: 18),
-                                  title: Text(s.name),
-                                  trailing: IconButton(
-                                    icon: const Icon(Icons.delete_outline,
-                                        size: 20),
-                                    tooltip: '删除',
-                                    onPressed: () =>
-                                        widget.db.deleteEntry(s.id),
-                                  ),
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => EntryEditPage(
-                                        db: widget.db,
-                                        novel: widget.novel,
-                                        kind: EntryKind.scene,
-                                        entry: s,
-                                        parentId: widget.entry!.id,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          );
-                        },
-                      ),
                     ],
                   ),
                 ),

@@ -94,12 +94,10 @@ class _AssistantBallState extends State<AssistantBall> {
     try {
       final settings = await SettingsStore.loadFor(LlmPurpose.lore);
       final all = await widget.db.allEntriesOf(novel.id);
-      final rels = await widget.db.relationsOfNovel(novel.id);
       final links = await widget.db.linksOfNovel(novel.id);
       final userMsg = assistantChangesUser(
         novel: novel,
         allEntries: all,
-        relations: rels,
         links: links,
         pageDetail: snap.detail,
         instruction: instruction,

@@ -12,7 +12,6 @@ class NovelTransfer {
 
   static Future<String> exportJson(AppDatabase db, Novel novel) async {
     final entries = await db.allEntriesOf(novel.id);
-    final rels = await db.relationsOfNovel(novel.id);
     final links = await db.linksOfNovel(novel.id);
     final chapterRows = await db.watchChapters(novel.id).first;
     final indexOf = {
@@ -37,19 +36,7 @@ class NovelTransfer {
             'kind': e.kind,
             'name': e.name,
             'content': e.content,
-            if (e.parentId != null && indexOf.containsKey(e.parentId))
-              'parent': indexOf[e.parentId],
           }
-      ],
-      'relations': [
-        for (final r in rels)
-          if (indexOf.containsKey(r.fromEntryId) &&
-              indexOf.containsKey(r.toEntryId))
-            {
-              'from': indexOf[r.fromEntryId],
-              'to': indexOf[r.toEntryId],
-              'label': r.label,
-            }
       ],
       'links': [
         for (final l in links)
@@ -103,15 +90,7 @@ class NovelTransfer {
             parent: e['parent'] is int ? e['parent'] as int : null,
           )
     ];
-    final relRows = [
-      for (final r in (data['relations'] as List? ?? []))
-        if (r is Map && r['from'] is int && r['to'] is int)
-          (
-            from: r['from'] as int,
-            to: r['to'] as int,
-            label: r['label'] as String? ?? '',
-          )
-    ];
+    // 旧格式的 relations 并入 links
     final linkRows = [
       for (final l in (data['links'] as List? ?? []))
         if (l is Map && l['from'] is int && l['to'] is int)
@@ -119,7 +98,14 @@ class NovelTransfer {
             from: l['from'] as int,
             to: l['to'] as int,
             label: l['label'] as String? ?? '',
-          )
+          ),
+      for (final r in (data['relations'] as List? ?? []))
+        if (r is Map && r['from'] is int && r['to'] is int)
+          (
+            from: r['from'] as int,
+            to: r['to'] as int,
+            label: r['label'] as String? ?? '',
+          ),
     ];
     final chapterRows = [
       for (final c in (data['chapters'] as List? ?? []))
@@ -137,7 +123,7 @@ class NovelTransfer {
           )
     ];
     await db.importNovel(title, novel['description'] as String? ?? '',
-        entryRows, relRows, linkRows, chapterRows);
+        entryRows, linkRows, chapterRows);
     return title;
   }
 }

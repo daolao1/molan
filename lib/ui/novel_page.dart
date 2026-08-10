@@ -24,10 +24,10 @@ class NovelPage extends StatefulWidget {
 
 class _NovelPageState extends State<NovelPage>
     with SingleTickerProviderStateMixin {
-  // 场景挂在地点下,不作为顶层 tab
   static const _kinds = [
     EntryKind.character,
     EntryKind.location,
+    EntryKind.scene,
     EntryKind.item,
     EntryKind.lore,
   ];
@@ -98,12 +98,10 @@ class _NovelPageState extends State<NovelPage>
     try {
       final settings = await SettingsStore.loadFor(LlmPurpose.lore);
       final all = await widget.db.allEntriesOf(widget.novel.id);
-      final rels = await widget.db.relationsOfNovel(widget.novel.id);
       final links = await widget.db.linksOfNovel(widget.novel.id);
       final userMsg = loreGenerationUser(
           novel: widget.novel,
           allEntries: all,
-          relations: rels,
           links: links,
           request: request);
       String reply;
@@ -164,13 +162,18 @@ class _NovelPageState extends State<NovelPage>
           if (name.isEmpty || detail.isEmpty) continue;
           final id = await widget.db.createEntry(widget.novel.id,
               EntryKind.lore, name, encodeEntryContent({'detail': detail}));
-          final related = m['related'];
-          if (related is List) {
+          // links 新格式 [{to,label}];兼容旧 related ["名字"]
+          final rawLinks = m['links'] ?? m['related'];
+          if (rawLinks is List) {
             final toIds = <({int toId, String label})>[];
-            for (final r in related) {
-              final target = nameToId[r?.toString().trim()];
+            for (final r in rawLinks) {
+              final target = r is Map
+                  ? nameToId[r['to']?.toString().trim()]
+                  : nameToId[r?.toString().trim()];
+              final label =
+                  r is Map ? r['label']?.toString().trim() ?? '' : '';
               if (target != null && !toIds.any((x) => x.toId == target)) {
-                toIds.add((toId: target, label: ''));
+                toIds.add((toId: target, label: label));
                 linked++;
               }
             }

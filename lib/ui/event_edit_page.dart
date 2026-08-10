@@ -281,14 +281,12 @@ class _EventEditPageState extends State<EventEditPage>
 
   Future<void> _initSession() async {
     final all = await widget.db.allEntriesOf(widget.novel.id);
-    final rels = await widget.db.relationsOfNovel(widget.novel.id);
     final links = await widget.db.linksOfNovel(widget.novel.id);
     _messages.add({
       'role': 'system',
       'content': writingAgentSystem(
         novel: widget.novel,
         allEntries: all,
-        relations: rels,
         links: links,
         chapterTitle: widget.chapter.title,
         priorOutlines: _priorOutlines,
@@ -374,14 +372,12 @@ class _EventEditPageState extends State<EventEditPage>
       } else if (_systemStale) {
         // 重建背景,设定/前文可能已变化
         final all = await widget.db.allEntriesOf(widget.novel.id);
-        final rels = await widget.db.relationsOfNovel(widget.novel.id);
         final links = await widget.db.linksOfNovel(widget.novel.id);
         final sys = {
           'role': 'system',
           'content': writingAgentSystem(
             novel: widget.novel,
             allEntries: all,
-            relations: rels,
             links: links,
             chapterTitle: widget.chapter.title,
             priorOutlines: _priorOutlines,
@@ -516,14 +512,7 @@ class _EventEditPageState extends State<EventEditPage>
               }
             }
             final beforeEntry = before;
-            // 旧关系/关联快照:回退时连同恢复
-            final beforeRels = beforeEntry == null
-                ? const <({int toId, String label})>[]
-                : [
-                    for (final r
-                        in await widget.db.relationsFrom(beforeEntry.id))
-                      (toId: r.toEntryId, label: r.label)
-                  ];
+            // 旧关联快照:回退时连同恢复
             final beforeLinks = beforeEntry == null
                 ? const <({int toId, String label})>[]
                 : [
@@ -544,7 +533,6 @@ class _EventEditPageState extends State<EventEditPage>
               } else if (cur != null) {
                 await widget.db.updateEntry(
                     cur.id, beforeEntry.name, beforeEntry.content);
-                await widget.db.replaceRelationsFrom(cur.id, beforeRels);
                 await widget.db.replaceLinksFrom(cur.id, beforeLinks);
               }
               return null;
@@ -1071,7 +1059,6 @@ class _EventEditPageState extends State<EventEditPage>
       'upsert_entry' =>
         '$label「${args['name']}」(${[
           if (args['fields'] is Map) ...(args['fields'] as Map).keys,
-          if (args['relations'] is List) '关系×${(args['relations'] as List).length}',
           if (args['links'] is List) '关联×${(args['links'] as List).length}',
         ].join('、')})',
       'get_entry_detail' => '$label「${args['name']}」',
@@ -1171,18 +1158,11 @@ class _EventEditPageState extends State<EventEditPage>
             for (final e in fields.entries) '${e.key}: ${e.value}'
           ].join('\n')));
         }
-        final rels = args['relations'];
-        if (rels is List && rels.isNotEmpty) {
-          widgets.add(block([
-            for (final r in rels)
-              if (r is Map) '→ ${r['label']} → ${r['to']}'
-          ].join('\n')));
-        }
         final lks = args['links'];
         if (lks is List && lks.isNotEmpty) {
           widgets.add(block([
             for (final r in lks)
-              if (r is Map) '↔ ${r['to']}${(r['label']?.toString() ?? '').isEmpty ? '' : ':${r['label']}'}'
+              if (r is Map) '→ ${r['to']}${(r['label']?.toString() ?? '').isEmpty ? '' : ':${r['label']}'}'
           ].join('\n')));
         }
       default:

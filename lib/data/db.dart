@@ -13,7 +13,7 @@ class Novels extends Table {
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
 
-/// 小说下的设定条目(人物/地点/物品/场景)
+/// 小说下的设定条目(人物/地点/物品/场景/设定)
 class Entries extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get novelId =>
@@ -21,26 +21,11 @@ class Entries extends Table {
   TextColumn get kind => text()();
   TextColumn get name => text()();
   TextColumn get content => text().withDefault(const Constant(''))();
-
-  /// 场景所属的地点条目 id
-  IntColumn get parentId => integer()
-      .nullable()
-      .references(Entries, #id, onDelete: KeyAction.cascade)();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
 
-/// 人物间关系(有向:from → to)
-class CharacterRelations extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get fromEntryId =>
-      integer().references(Entries, #id, onDelete: KeyAction.cascade)();
-  IntColumn get toEntryId =>
-      integer().references(Entries, #id, onDelete: KeyAction.cascade)();
-  TextColumn get label => text()();
-}
-
-/// 通用条目关联(任意卡片 → 任意卡片,带描述)
+/// 通用条目关联(任意卡片 → 任意卡片,有向、带描述):人物关系、场景归属等一律用它
 class EntryLinks extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get fromEntryId =>
@@ -48,7 +33,7 @@ class EntryLinks extends Table {
   IntColumn get toEntryId =>
       integer().references(Entries, #id, onDelete: KeyAction.cascade)();
 
-  /// 关联描述,如“幼年在此学艺”
+  /// 关联描述,如“师徒”“位于”“幼年在此学艺”
   TextColumn get label => text().withDefault(const Constant(''))();
 }
 
@@ -89,7 +74,7 @@ enum EntryKind {
 }
 
 @DriftDatabase(
-    tables: [Novels, Entries, CharacterRelations, EntryLinks, Chapters, ChapterEvents])
+    tables: [Novels, Entries, EntryLinks, Chapters, ChapterEvents])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
       : super(executor ??
@@ -102,13 +87,15 @@ class AppDatabase extends _$AppDatabase {
             ));
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onUpgrade: (m, from, to) async {
-          if (from < 2) await m.createTable(characterRelations);
-          if (from < 3) await m.addColumn(entries, entries.parentId);
+          if (from < 3) {
+            await customStatement(
+                'ALTER TABLE entries ADD COLUMN parent_id INTEGER NULL');
+          }
           if (from < 4) await m.createTable(entryLinks);
           if (from < 5) {
             await m.createTable(chapters);
@@ -119,6 +106,20 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 7) {
             await m.addColumn(entryLinks, entryLinks.label);
+          }
+          if (from < 8) {
+            // 人物关系与场景归属并入通用关联
+            if (from >= 2) {
+              await customStatement(
+                  'INSERT INTO entry_links (from_entry_id, to_entry_id, label) '
+                  'SELECT from_entry_id, to_entry_id, label FROM character_relations');
+              await customStatement(
+                  'DROP TABLE IF EXISTS character_relations');
+            }
+            await customStatement(
+                'INSERT INTO entry_links (from_entry_id, to_entry_id, label) '
+                "SELECT id, parent_id, '位于' FROM entries WHERE parent_id IS NOT NULL");
+            await m.alterTable(TableMigration(entries));
           }
         },
         beforeOpen: (details) async {
@@ -149,35 +150,16 @@ class AppDatabase extends _$AppDatabase {
           .watch();
 
   Future<int> createEntry(
-          int novelId, EntryKind kind, String name, String content,
-          {int? parentId}) =>
+          int novelId, EntryKind kind, String name, String content) =>
       into(entries).insert(EntriesCompanion.insert(
           novelId: novelId,
           kind: kind.name,
           name: name,
-          content: Value(content),
-          parentId: Value(parentId)));
-
-  /// 某地点下的场景列表
-  Stream<List<Entry>> watchScenesOf(int locationId) => (select(entries)
-        ..where((t) =>
-            t.parentId.equals(locationId) &
-            t.kind.equals(EntryKind.scene.name))
-        ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)]))
-      .watch();
+          content: Value(content)));
 
   /// 本小说全部条目(供 AI 生成构建上下文)
   Future<List<Entry>> allEntriesOf(int novelId) =>
       (select(entries)..where((t) => t.novelId.equals(novelId))).get();
-
-  /// 本小说全部人物关系
-  Future<List<CharacterRelation>> relationsOfNovel(int novelId) async {
-    final q = select(characterRelations).join([
-      innerJoin(entries, entries.id.equalsExp(characterRelations.fromEntryId))
-    ])
-      ..where(entries.novelId.equals(novelId));
-    return [for (final r in await q.get()) r.readTable(characterRelations)];
-  }
 
   // ---- 通用关联 ----
   Future<List<EntryLink>> linksFrom(int entryId) =>
@@ -269,19 +251,16 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deleteEvent(int id) =>
       (delete(chapterEvents)..where((t) => t.id.equals(id))).go();
 
-  Future<void> updateEntry(int id, String name, String content,
-          {int? parentId}) =>
+  Future<void> updateEntry(int id, String name, String content) =>
       (update(entries)..where((t) => t.id.equals(id))).write(EntriesCompanion(
           name: Value(name),
           content: Value(content),
-          parentId: parentId == null ? const Value.absent() : Value(parentId),
           updatedAt: Value(DateTime.now())));
 
   Future<void> deleteEntry(int id) =>
       (delete(entries)..where((t) => t.id.equals(id))).go();
 
-  // ---- 人物关系 ----
-  /// 本小说全部人物(供关系选择器)
+  /// 本小说全部人物(供选择器)
   Future<List<Entry>> charactersOf(int novelId) => (select(entries)
         ..where((t) =>
             t.novelId.equals(novelId) &
@@ -289,49 +268,11 @@ class AppDatabase extends _$AppDatabase {
         ..orderBy([(t) => OrderingTerm.asc(t.name)]))
       .get();
 
-  Future<List<CharacterRelation>> relationsFrom(int entryId) =>
-      (select(characterRelations)..where((t) => t.fromEntryId.equals(entryId)))
-          .get();
-
-  Future<List<CharacterRelation>> relationsTo(int entryId) =>
-      (select(characterRelations)..where((t) => t.toEntryId.equals(entryId)))
-          .get();
-
-  /// 重写某人物发起的全部关系
-  Future<void> replaceRelationsFrom(
-      int entryId, List<({int toId, String label})> rels) =>
-      transaction(() async {
-        await (delete(characterRelations)
-              ..where((t) => t.fromEntryId.equals(entryId)))
-            .go();
-        for (final r in rels) {
-          await into(characterRelations).insert(CharacterRelationsCompanion
-              .insert(fromEntryId: entryId, toEntryId: r.toId, label: r.label));
-        }
-      });
-
-  /// 新增或更新一条定向关系
-  Future<void> upsertRelation(int fromId, int toId, String label) async {
-    final existing = await (select(characterRelations)
-          ..where((t) =>
-              t.fromEntryId.equals(fromId) & t.toEntryId.equals(toId)))
-        .get();
-    if (existing.isEmpty) {
-      await into(characterRelations).insert(CharacterRelationsCompanion
-          .insert(fromEntryId: fromId, toEntryId: toId, label: label));
-    } else {
-      await (update(characterRelations)
-            ..where((t) => t.id.equals(existing.first.id)))
-          .write(CharacterRelationsCompanion(label: Value(label)));
-    }
-  }
-
-  /// 导入一本小说(条目用数组索引引用关系与父级),返回新小说 id
+  /// 导入一本小说(条目用数组索引引用关联),返回新小说 id
   Future<int> importNovel(
     String title,
     String description,
     List<({String kind, String name, String content, int? parent})> entryRows,
-    List<({int from, int to, String label})> relRows,
     List<({int from, int to, String label})> linkRows,
     List<({String title, List<({String outline, String content})> events})>
         chapterRows,
@@ -346,22 +287,15 @@ class AppDatabase extends _$AppDatabase {
               name: e.name,
               content: Value(e.content))));
         }
-        // 二次遍历补父级,因父条目可能排在子条目之后
+        // 旧格式的场景归属转为关联
         for (var i = 0; i < entryRows.length; i++) {
           final p = entryRows[i].parent;
           if (p != null && p >= 0 && p < ids.length && p != i) {
-            await (update(entries)..where((t) => t.id.equals(ids[i])))
-                .write(EntriesCompanion(parentId: Value(ids[p])));
+            await into(entryLinks).insert(EntryLinksCompanion.insert(
+                fromEntryId: ids[i],
+                toEntryId: ids[p],
+                label: const Value('位于')));
           }
-        }
-        for (final r in relRows) {
-          if (r.from < 0 || r.from >= ids.length) continue;
-          if (r.to < 0 || r.to >= ids.length) continue;
-          await into(characterRelations).insert(
-              CharacterRelationsCompanion.insert(
-                  fromEntryId: ids[r.from],
-                  toEntryId: ids[r.to],
-                  label: r.label));
         }
         for (final l in linkRows) {
           if (l.from < 0 || l.from >= ids.length) continue;

@@ -7,7 +7,7 @@ const novelToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'get_entry_detail',
-      'description': '获取某个设定条目的完整详细内容;人物会附带其全部人物关系',
+      'description': '获取某个设定条目的完整详细内容,含双向关联(人物关系、场景归属等)',
       'parameters': {
         'type': 'object',
         'properties': {
@@ -65,18 +65,14 @@ class NovelToolExecutor {
     final kind = EntryKind.values.byName(e.kind);
     final data = parseEntryContent(e.content);
     final buf = StringBuffer('${kind.label}「${e.name}」:\n');
-    if (e.parentId != null) {
-      final parent = all.where((x) => x.id == e.parentId).firstOrNull;
-      if (parent != null) buf.writeln('所属地点:${parent.name}');
-    }
     final links = await db.linksFrom(e.id);
     if (links.isNotEmpty) {
-      buf.writeln('关联卡片:');
+      buf.writeln('关联(本卡发起):');
       for (final l in links) {
         final to = all.where((x) => x.id == l.toEntryId).firstOrNull;
         if (to != null) {
           buf.writeln(
-              '- ${to.name}${l.label.isEmpty ? '' : ':${l.label}'}');
+              '- → ${to.name}${l.label.isEmpty ? '' : ':${l.label}'}');
         }
       }
     }
@@ -87,7 +83,7 @@ class NovelToolExecutor {
         final from = all.where((x) => x.id == l.fromEntryId).firstOrNull;
         if (from != null) {
           buf.writeln(
-              '- ${from.name}${l.label.isEmpty ? '' : ':${l.label}'}');
+              '- ← ${from.name}${l.label.isEmpty ? '' : ':${l.label}'}');
         }
       }
     }
@@ -97,19 +93,6 @@ class NovelToolExecutor {
     }
     for (final x in extensionFields(kind, data).entries) {
       if (x.value.trim().isNotEmpty) buf.writeln('${x.key}:${x.value.trim()}');
-    }
-    if (kind == EntryKind.character) {
-      final nameOf = {for (final x in all) x.id: x.name};
-      final rels = await db.relationsOfNovel(novelId);
-      final lines = [
-        for (final r in rels)
-          if (r.fromEntryId == e.id || r.toEntryId == e.id)
-            '${nameOf[r.fromEntryId]} →${r.label}→ ${nameOf[r.toEntryId]}'
-      ];
-      if (lines.isNotEmpty) {
-        buf.writeln('人物关系:');
-        lines.forEach(buf.writeln);
-      }
     }
     return buf.toString().trimRight();
   }

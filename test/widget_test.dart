@@ -25,7 +25,7 @@ void main() {
 
     expect(find.text('测试之书'), findsOneWidget);
 
-    // 进入小说页,场景不再是顶层 Tab
+    // 进入小说页,场景是独立顶层 Tab
     await tester.tap(find.text('测试之书'));
     await tester.pumpAndSettle();
     expect(find.text('人物'), findsOneWidget);
@@ -34,7 +34,7 @@ void main() {
     // TabBar 与右侧导航栏各出现一次
     expect(find.text('设定'), findsAtLeastNWidgets(1));
     expect(find.text('写作'), findsOneWidget);
-    expect(find.text('场景'), findsNothing);
+    expect(find.text('场景'), findsOneWidget);
 
     // 新建人物
     await tester.tap(find.text('新建人物'));
