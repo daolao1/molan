@@ -111,6 +111,29 @@ class _EventEditPageState extends State<EventEditPage>
   bool _stopRequested = false;
   Offset _lastTapPos = Offset.zero;
 
+  /// 最近一次非空选区(web 上点按钮会失焦丢选区,用它兑底)
+  TextSelection? _pinnedSel;
+  String _pinnedText = '';
+
+  void _trackSel() {
+    final s = _contentCtrl.selection;
+    if (s.isValid && !s.isCollapsed && s.end <= _contentCtrl.text.length) {
+      _pinnedSel = s;
+      _pinnedText = _contentCtrl.text;
+    } else if (_contentCtrl.text != _pinnedText) {
+      _pinnedSel = null;
+    }
+  }
+
+  /// 当前可用选区:实时优先,否则用钉住的(文本未变时)
+  TextSelection? get _effectiveSel {
+    final s = _contentCtrl.selection;
+    if (s.isValid && !s.isCollapsed) return s;
+    final p = _pinnedSel;
+    if (p != null && _contentCtrl.text == _pinnedText) return p;
+    return null;
+  }
+
   static const _toolLabels = {
     'read_content': '读取正文',
     'replace_text': '修改文字',
@@ -134,6 +157,7 @@ class _EventEditPageState extends State<EventEditPage>
   void initState() {
     super.initState();
     AppContextRegistry.push(_ctxProvider);
+    _contentCtrl.addListener(_trackSel);
     _restoreChat();
   }
 
@@ -309,11 +333,11 @@ class _EventEditPageState extends State<EventEditPage>
     String? selected;
     int? selStart;
     final hl = _contentCtrl.highlightedText;
-    final sel = _contentCtrl.selection;
+    final sel = _effectiveSel;
     if (hl != null) {
       selected = hl;
       selStart = _contentCtrl.highlight!.start;
-    } else if (sel.isValid && !sel.isCollapsed) {
+    } else if (sel != null) {
       final t = sel.textInside(_contentCtrl.text);
       if (t.trim().isNotEmpty) {
         selected = t;
@@ -846,9 +870,12 @@ class _EventEditPageState extends State<EventEditPage>
                               ? 0
                               : '\n'.allMatches(v.text).length + 1;
                           final s = v.selection;
-                          final selLen = s.isValid && !s.isCollapsed
-                              ? s.textInside(v.text).length
-                              : 0;
+                          final eff = _effectiveSel;
+                          final selLen = eff != null
+                              ? eff.textInside(v.text).length
+                              : s.isValid && !s.isCollapsed
+                                  ? s.textInside(v.text).length
+                                  : 0;
                           final hl = _contentCtrl.highlightedText;
                           final info = hl != null
                               ? ' · 已高亮 ${hl.length} 字,对话将附带'
@@ -874,9 +901,12 @@ class _EventEditPageState extends State<EventEditPage>
                                   icon: const Icon(Icons.border_color,
                                       size: 16),
                                   label: const Text('标记高亮'),
-                                  onPressed: () => setState(() =>
-                                      _contentCtrl.setHighlight(
-                                          s.start, s.end)),
+                                  onPressed: () {
+                                    final eff = _effectiveSel;
+                                    if (eff == null) return;
+                                    setState(() => _contentCtrl
+                                        .setHighlight(eff.start, eff.end));
+                                  },
                                 )
                               else if (hl != null)
                                 TextButton.icon(
