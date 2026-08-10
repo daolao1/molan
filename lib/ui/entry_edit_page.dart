@@ -31,9 +31,6 @@ class _EntryEditPageState extends State<EntryEditPage> {
   final _aiPromptCtrl = TextEditingController();
   late final List<EntryField> _fields = entryFieldsFor(widget.kind);
   late final Map<String, TextEditingController> _fieldCtrls;
-
-  /// AI 写入的模板外字段,可编辑可删
-  late Map<String, TextEditingController> _extCtrls;
   bool _dirty = false;
   bool _generating = false;
   late GenerationMode _genMode = widget.entry == null
@@ -56,13 +53,21 @@ class _EntryEditPageState extends State<EntryEditPage> {
   void initState() {
     super.initState();
     final data = parseEntryContent(widget.entry?.content ?? '');
+    // 历史遗留的模板外字段并入备注类字段,不再独立存在
+    final ext = extensionFields(widget.kind, data);
+    if (ext.isNotEmpty) {
+      final target = _fields.any((f) => f.key == 'notes')
+          ? 'notes'
+          : _fields.last.key;
+      final extra =
+          [for (final e in ext.entries) '${e.key}:${e.value}'].join('\n');
+      final cur = data[target]?.trim() ?? '';
+      data[target] = cur.isEmpty ? extra : '$cur\n$extra';
+      _dirty = true;
+    }
     _fieldCtrls = {
       for (final f in _fields)
         f.key: TextEditingController(text: data[f.key] ?? '')
-    };
-    _extCtrls = {
-      for (final e in extensionFields(widget.kind, data).entries)
-        e.key: TextEditingController(text: e.value)
     };
     _loadLinks();
     AppContextRegistry.push(_ctxProvider);
@@ -193,9 +198,6 @@ class _EntryEditPageState extends State<EntryEditPage> {
     _nameCtrl.dispose();
     _aiPromptCtrl.dispose();
     for (final c in _fieldCtrls.values) {
-      c.dispose();
-    }
-    for (final c in _extCtrls.values) {
       c.dispose();
     }
     super.dispose();
@@ -375,6 +377,41 @@ class _EntryEditPageState extends State<EntryEditPage> {
                         onSelected: (v) => setDialog(() =>
                             v ? selected.add(n) : selected.remove(n)),
                       ),
+                    ActionChip(
+                      avatar: const Icon(Icons.add, size: 16),
+                      label: const Text('其他人…'),
+                      onPressed: () async {
+                        final ctrl = TextEditingController();
+                        final name = await showDialog<String>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('其他使用者'),
+                            content: TextField(
+                              controller: ctrl,
+                              autofocus: true,
+                              decoration: const InputDecoration(
+                                  hintText: '如:村民们 / 江湖人 / 某个路人',
+                                  border: OutlineInputBorder()),
+                            ),
+                            actions: [
+                              TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('取消')),
+                              FilledButton(
+                                  onPressed: () => Navigator.pop(
+                                      context, ctrl.text.trim()),
+                                  child: const Text('添加')),
+                            ],
+                          ),
+                        );
+                        if (name != null && name.isNotEmpty) {
+                          setDialog(() {
+                            if (!names.contains(name)) names.add(name);
+                            selected.add(name);
+                          });
+                        }
+                      },
+                    ),
                   ],
                 ),
               ],
@@ -448,9 +485,8 @@ class _EntryEditPageState extends State<EntryEditPage> {
       _toast('名称不能为空', error: true);
       return;
     }
-    // 清空即删除(encode 会剔除空值);模板与扩展字段一并写回
+    // 清空即删除(encode 会剔除空值);只写模板字段
     final content = encodeEntryContent({
-      for (final e in _extCtrls.entries) e.key: e.value.text,
       for (final e in _fieldCtrls.entries) e.key: e.value.text,
     });
     int entryId;
@@ -623,28 +659,6 @@ class _EntryEditPageState extends State<EntryEditPage> {
                   ),
                 ),
               ],
-            for (final e in _extCtrls.entries) ...[
-              const SizedBox(height: 16),
-              TextField(
-                controller: e.value,
-                maxLines: null,
-                minLines: 2,
-                onChanged: (_) => _dirty = true,
-                decoration: InputDecoration(
-                  labelText: '${e.key}(扩展)',
-                  alignLabelWithHint: true,
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: '删除此字段',
-                    onPressed: () => setState(() {
-                      _extCtrls.remove(e.key)?.dispose();
-                      _dirty = true;
-                    }),
-                  ),
-                ),
-              ),
-            ],
             if (widget.kind == EntryKind.character) ...[
               const SizedBox(height: 16),
               Card(
