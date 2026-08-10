@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../data/app_context.dart';
 import '../data/db.dart';
@@ -31,9 +32,23 @@ class EventEditPage extends StatefulWidget {
 }
 
 class _ChatMsg {
-  _ChatMsg(this.isUser, this.text);
+  _ChatMsg(this.isUser, this.text)
+      : isChange = false,
+        snapshot = null;
+
+  _ChatMsg.change(this.text, this.snapshot)
+      : isUser = false,
+        isChange = true;
+
   final bool isUser;
   final String text;
+  final bool isChange;
+
+  /// 本轮改动前的快照(拒绝时恢复)
+  final ({String outline, String content})? snapshot;
+
+  /// null=待处理,true=已接受,false=已拒绝
+  bool? reviewed;
 }
 
 class _EventEditPageState extends State<EventEditPage> {
@@ -50,6 +65,9 @@ class _EventEditPageState extends State<EventEditPage> {
 
   /// 展示用消息
   final List<_ChatMsg> _chatUi = [];
+
+  /// 正文/大纲回退栈(每轮 AI 改动前压入)
+  final List<({String outline, String content})> _history = [];
   bool _busy = false;
   bool _dirty = false;
 
@@ -168,10 +186,16 @@ class _EventEditPageState extends State<EventEditPage> {
     }
     setState(() {
       _busy = true;
+      // 新一轮开始:未处理的变更卡视为接受
+      for (final m in _chatUi) {
+        if (m.isChange && m.reviewed == null) m.reviewed = true;
+      }
       _chatUi.add(_ChatMsg(true, uiText));
       _chatCtrl.clear();
     });
     _scrollChat();
+    final snapshot =
+        (outline: _outlineCtrl.text, content: _contentCtrl.text);
     try {
       final settings = await SettingsStore.loadFor(LlmPurpose.writing);
       if (_messages.isEmpty) await _initSession();
@@ -205,7 +229,23 @@ class _EventEditPageState extends State<EventEditPage> {
         onToolCall: executor.call,
       );
       if (!mounted) return;
-      setState(() => _chatUi.add(_ChatMsg(false, reply.trim())));
+      setState(() {
+        _chatUi.add(_ChatMsg(false, reply.trim()));
+        // 本轮有改动 → 压栈并插入变更卡
+        final outlineChanged = snapshot.outline != _outlineCtrl.text;
+        final contentChanged = snapshot.content != _contentCtrl.text;
+        if (outlineChanged || contentChanged) {
+          _history.add(snapshot);
+          if (_history.length > 20) _history.removeAt(0);
+          final delta = _contentCtrl.text.length - snapshot.content.length;
+          final parts = [
+            if (contentChanged)
+              '正文${delta >= 0 ? '+' : ''}$delta 字',
+            if (outlineChanged) '大纲已更新',
+          ];
+          _chatUi.add(_ChatMsg.change('本轮改动:${parts.join(' · ')}', snapshot));
+        }
+      });
       _scrollChat();
     } on LlmException catch (e) {
       _toast(e.message, error: true);
@@ -241,6 +281,21 @@ class _EventEditPageState extends State<EventEditPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// 回退到上一个快照
+  void _undo() {
+    if (_history.isEmpty) {
+      _toast('没有可回退的版本', error: true);
+      return;
+    }
+    final s = _history.removeLast();
+    setState(() {
+      _outlineCtrl.text = s.outline;
+      _contentCtrl.text = s.content;
+      _dirty = true;
+    });
+    _toast('已回退一步(剩 ${_history.length} 步可退)');
   }
 
   void _scrollChat() {
@@ -354,15 +409,27 @@ class _EventEditPageState extends State<EventEditPage> {
                       final selLen = s.isValid && !s.isCollapsed
                           ? s.textInside(v.text).length
                           : 0;
-                      return Text(
-                        '$lineCount 行 · ${v.text.length} 字'
-                        '${selLen > 0 ? ' · 已选中 $selLen 字,对话将附带选区' : ''}',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(
-                                color:
-                                    Theme.of(context).colorScheme.outline),
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '$lineCount 行 · ${v.text.length} 字'
+                              '${selLen > 0 ? ' · 已选中 $selLen 字,对话将附带选区' : ''}',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .outline),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.undo, size: 18),
+                            tooltip: '回退上一版(${_history.length})',
+                            onPressed: _history.isEmpty ? null : _undo,
+                          ),
+                        ],
                       );
                     },
                   ),
@@ -372,6 +439,60 @@ class _EventEditPageState extends State<EventEditPage> {
             _chatPanel(context),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 变更卡:感知本轮改动,接受保留 / 拒绝回滚
+  Widget _changeCard(BuildContext context, _ChatMsg m) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Icon(
+              m.reviewed == false
+                  ? Icons.replay
+                  : m.reviewed == true
+                      ? Icons.check_circle_outline
+                      : Icons.edit_note,
+              size: 18,
+              color: scheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              m.reviewed == false ? '${m.text}(已拒绝并回滚)' : m.text,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          if (m.reviewed == null) ...[
+            TextButton(
+              onPressed: () {
+                final s = m.snapshot;
+                setState(() {
+                  if (s != null) {
+                    _outlineCtrl.text = s.outline;
+                    _contentCtrl.text = s.content;
+                    _history.remove(s);
+                  }
+                  m.reviewed = false;
+                  _dirty = true;
+                });
+              },
+              child: const Text('拒绝'),
+            ),
+            FilledButton.tonal(
+              onPressed: () => setState(() => m.reviewed = true),
+              child: const Text('接受'),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -400,6 +521,7 @@ class _EventEditPageState extends State<EventEditPage> {
                 itemCount: _chatUi.length,
                 itemBuilder: (context, i) {
                   final m = _chatUi[i];
+                  if (m.isChange) return _changeCard(context, m);
                   return Align(
                     alignment: m.isUser
                         ? Alignment.centerRight
@@ -419,7 +541,9 @@ class _EventEditPageState extends State<EventEditPage> {
                                 .surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: SelectableText(m.text),
+                      child: m.isUser
+                          ? SelectableText(m.text)
+                          : MarkdownBody(data: m.text, selectable: true),
                     ),
                   );
                 },
