@@ -474,6 +474,12 @@ class _EventEditPageState extends State<EventEditPage>
             final kind =
                 EntryKind.values.asNameMap()[args['kind']?.toString()];
             final nm = args['name']?.toString().trim() ?? '';
+            // 改名后按新名查找
+            final renamed = args['fields'] is Map
+                ? (args['fields'] as Map)['name']?.toString().trim()
+                : null;
+            final lookupName =
+                (renamed?.isNotEmpty ?? false) ? renamed! : nm;
             Entry? before;
             if (kind != null && nm.isNotEmpty) {
               for (final e in await widget.db.allEntriesOf(widget.novel.id)) {
@@ -488,7 +494,7 @@ class _EventEditPageState extends State<EventEditPage>
               if (kind == null || nm.isEmpty) return '无法回退';
               Entry? cur;
               for (final e in await widget.db.allEntriesOf(widget.novel.id)) {
-                if (e.kind == kind.name && e.name == nm) {
+                if (e.kind == kind.name && e.name == lookupName) {
                   cur = e;
                   break;
                 }

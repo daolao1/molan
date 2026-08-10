@@ -243,10 +243,12 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deleteEvent(int id) =>
       (delete(chapterEvents)..where((t) => t.id.equals(id))).go();
 
-  Future<void> updateEntry(int id, String name, String content) =>
+  Future<void> updateEntry(int id, String name, String content,
+          {int? parentId}) =>
       (update(entries)..where((t) => t.id.equals(id))).write(EntriesCompanion(
           name: Value(name),
           content: Value(content),
+          parentId: parentId == null ? const Value.absent() : Value(parentId),
           updatedAt: Value(DateTime.now())));
 
   Future<void> deleteEntry(int id) =>

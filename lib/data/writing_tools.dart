@@ -81,7 +81,7 @@ const writingToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'upsert_entry',
-      'description': '新增或增量更新一张设定卡(人物/地点/物品/场景/设定):同名则合并字段,不存在则创建;写作中产生的新设定、人物状态变化及时记录',
+      'description': '新增或更新一张设定卡:同名合并字段,不存在则创建。fields 可用任意 key(模板外的也会保存);fields.name 可改名;parent 可指定场景所属地点',
       'parameters': {
         'type': 'object',
         'properties': {
@@ -89,10 +89,14 @@ const writingToolSchemas = [
             'type': 'string',
             'enum': ['character', 'location', 'item', 'scene', 'lore'],
           },
-          'name': {'type': 'string', 'description': '条目名称'},
+          'name': {'type': 'string', 'description': '条目名称(现名)'},
           'fields': {
             'type': 'object',
-            'description': '字段内容;更新时只给需修改的字段',
+            'description': '字段内容,任意 key;更新时只给需修改的;含 "name" 时表示改名',
+          },
+          'parent': {
+            'type': 'string',
+            'description': '仅场景可用:所属地点名(必须已存在)',
           },
         },
         'required': ['kind', 'name', 'fields'],
@@ -215,19 +219,31 @@ class WritingToolExecutor {
   Future<String> _upsertEntry(Map<String, dynamic> args) async {
     final kind = EntryKind.values.asNameMap()[args['kind']?.toString()];
     final name = args['name']?.toString().trim() ?? '';
-    final rawFields = args['fields'];
     if (kind == null || name.isEmpty) return '失败:kind 或 name 无效';
-    final valid = {for (final f in entryFieldsFor(kind)) f.key};
     final fields = <String, String>{};
+    final rawFields = args['fields'];
     if (rawFields is Map) {
       for (final e in rawFields.entries) {
-        if (valid.contains(e.key.toString()) && e.value != null) {
-          fields[e.key.toString()] = e.value.toString();
-        }
+        if (e.value != null) fields[e.key.toString()] = e.value.toString();
       }
     }
-    if (fields.isEmpty) return '失败:fields 为空或 key 不合法(可用:${valid.join('、')})';
+    final newName = fields.remove('name')?.trim();
+    // 场景可指定所属地点
+    int? parentId;
+    final parentName = args['parent']?.toString().trim() ?? '';
     final all = await db.allEntriesOf(novelId);
+    if (parentName.isNotEmpty) {
+      for (final e in all) {
+        if (e.kind == EntryKind.location.name && e.name == parentName) {
+          parentId = e.id;
+          break;
+        }
+      }
+      if (parentId == null) return '失败:未找到地点「$parentName」';
+    }
+    if (fields.isEmpty && newName == null && parentId == null) {
+      return '失败:没有可更新的内容';
+    }
     Entry? target;
     for (final e in all) {
       if (e.kind == kind.name && e.name == name) {
@@ -236,11 +252,20 @@ class WritingToolExecutor {
       }
     }
     if (target == null) {
-      await db.createEntry(novelId, kind, name, encodeEntryContent(fields));
-      return '已创建${kind.label}「$name」';
+      await db.createEntry(
+          novelId, kind, newName ?? name, encodeEntryContent(fields),
+          parentId: parentId);
+      return '已创建${kind.label}「${newName ?? name}」';
     }
     final merged = parseEntryContent(target.content)..addAll(fields);
-    await db.updateEntry(target.id, target.name, encodeEntryContent(merged));
-    return '已更新${kind.label}「$name」的字段:${fields.keys.join('、')}';
+    await db.updateEntry(
+        target.id, newName ?? target.name, encodeEntryContent(merged),
+        parentId: parentId);
+    final parts = [
+      if (fields.isNotEmpty) '字段:${fields.keys.join('、')}',
+      if (newName != null) '改名为「$newName」',
+      if (parentId != null) '所属地点:$parentName',
+    ];
+    return '已更新${kind.label}「$name」(${parts.join(';')})';
   }
 }

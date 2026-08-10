@@ -412,8 +412,14 @@ class _EntryEditPageState extends State<EntryEditPage> {
       _toast('名称不能为空', error: true);
       return;
     }
-    final content = encodeEntryContent(
-        {for (final e in _fieldCtrls.entries) e.key: e.value.text});
+    // 保留模板外的扩展字段(AI 自定义 key)
+    final original = parseEntryContent(widget.entry?.content ?? '');
+    final known = {for (final f in _fields) f.key};
+    final content = encodeEntryContent({
+      for (final e in original.entries)
+        if (!known.contains(e.key)) e.key: e.value,
+      for (final e in _fieldCtrls.entries) e.key: e.value.text,
+    });
     int entryId;
     if (widget.entry == null) {
       entryId = await widget.db.createEntry(
