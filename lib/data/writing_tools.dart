@@ -99,7 +99,7 @@ const writingToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'upsert_entry',
-      'description': '新增或更新一张设定卡:同名合并字段,不存在则创建。fields 可用任意 key(模板外的也会保存);fields.name 可改名;links 记录与其他卡片的定向关联',
+      'description': '新增或更新一张设定卡:同名合并字段,不存在则创建。fields 限模板字段;fields.name 可改名;links 记录与其他卡片的定向关联',
       'parameters': {
         'type': 'object',
         'properties': {
@@ -110,7 +110,8 @@ const writingToolSchemas = [
           'name': {'type': 'string', 'description': '条目名称(现名)'},
           'fields': {
             'type': 'object',
-            'description': '字段内容,任意 key;更新时只给需修改的;含 "name" 时表示改名',
+            'description':
+                '字段内容,key 限该类型的模板字段(中文标签亦可);更新时只给需修改的;含 "name" 时表示改名;放不进具体字段的内容并入备注',
           },
           'links': {
             'type': 'array',
@@ -263,14 +264,24 @@ class WritingToolExecutor {
     if (kind == null || name.isEmpty) return '失败:kind 或 name 无效';
     final fields = <String, String>{};
     final rawFields = args['fields'];
+    final validKeys = {for (final f in entryFieldsFor(kind)) f.key};
+    final invalid = <String>[];
     if (rawFields is Map) {
       for (final e in rawFields.entries) {
-        if (e.value != null) {
-          // 中文标签 key 归一到模板 key,避免同义字段分家
-          fields[normalizeFieldKey(kind, e.key.toString())] =
-              e.value.toString();
+        if (e.value == null) continue;
+        // 中文标签 key 归一到模板 key;模板外的拒绝,保持卡片结构稳定
+        final key = normalizeFieldKey(kind, e.key.toString());
+        if (key == 'name' || validKeys.contains(key)) {
+          fields[key] = e.value.toString();
+        } else {
+          invalid.add(e.key.toString());
         }
       }
+    }
+    if (invalid.isNotEmpty) {
+      return '失败:字段 ${invalid.join('、')} 不属于${kind.label}模板;'
+          '可用字段:${[for (final f in entryFieldsFor(kind)) '${f.key}(${f.label})'].join('、')};'
+          '放不进具体字段的内容并入备注类字段';
     }
     final newName = fields.remove('name')?.trim();
     final all = await db.allEntriesOf(novelId);

@@ -41,8 +41,9 @@ List<EntryChange> parseChanges(String reply) {
     if (f is Map) {
       final valid = {for (final ef in entryFieldsFor(kind)) ef.key};
       for (final e in f.entries) {
-        if (valid.contains(e.key.toString()) && e.value != null) {
-          fields[e.key.toString()] = e.value.toString();
+        final key = normalizeFieldKey(kind, e.key.toString());
+        if (valid.contains(key) && e.value != null) {
+          fields[key] = e.value.toString();
         }
       }
     }
