@@ -319,6 +319,113 @@ class _EntryEditPageState extends State<EntryEditPage> {
     }
   }
 
+  /// 解析称呼字段(每行"称呼|使用者、使用者";无 | 表示所有人)
+  List<({String call, List<String> by})> _parseApps() {
+    final out = <({String call, List<String> by})>[];
+    for (final line in (_fieldCtrls['appellations']?.text ?? '').split('\n')) {
+      final t = line.trim();
+      if (t.isEmpty) continue;
+      final i = t.indexOf('|');
+      final call = (i < 0 ? t : t.substring(0, i)).trim();
+      final by = i < 0
+          ? <String>[]
+          : [
+              for (final n in t.substring(i + 1).split(RegExp('[、,,]')))
+                if (n.trim().isNotEmpty) n.trim()
+            ];
+      if (call.isNotEmpty) out.add((call: call, by: by));
+    }
+    return out;
+  }
+
+  void _writeApps(List<({String call, List<String> by})> apps) {
+    _fieldCtrls['appellations']!.text = [
+      for (final a in apps) a.by.isEmpty ? a.call : '${a.call}|${a.by.join('、')}'
+    ].join('\n');
+    _dirty = true;
+  }
+
+  /// index 为 null 时新增,否则编辑第 index 条称呼
+  Future<void> _editAppellation({int? index}) async {
+    final apps = _parseApps();
+    final editing = index != null ? apps[index] : null;
+    final callCtrl = TextEditingController(text: editing?.call ?? '');
+    final selected = <String>{...?editing?.by};
+    // 可选使用者 = 其他人物 ∪ 已有的非卡片名字(AI 写入的)
+    final names = <String>{
+      for (final c in _allCharacters)
+        if (c.id != widget.entry?.id) c.name,
+      ...selected,
+    }.toList();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialog) => AlertDialog(
+          title: Text(editing == null ? '添加称呼' : '编辑称呼'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: callCtrl,
+                  autofocus: editing == null,
+                  decoration: const InputDecoration(
+                      labelText: '称呼',
+                      hintText: '老大 / 陛下 / 小妹…',
+                      border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 12),
+                Text('谁这么叫(不选 = 所有人通用)',
+                    style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    for (final n in names)
+                      FilterChip(
+                        label: Text(n),
+                        selected: selected.contains(n),
+                        onSelected: (v) => setDialog(() =>
+                            v ? selected.add(n) : selected.remove(n)),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(editing == null ? '添加' : '保存')),
+          ],
+        ),
+      ),
+    );
+    if (ok == true && callCtrl.text.trim().isNotEmpty) {
+      final item = (
+        call: callCtrl.text.trim(),
+        by: [
+          for (final n in names)
+            if (selected.contains(n)) n
+        ],
+      );
+      setState(() {
+        if (index != null) {
+          apps[index] = item;
+        } else {
+          apps.add(item);
+        }
+        _writeApps(apps);
+      });
+    }
+  }
+
   /// index 为 null 时新增,否则编辑第 index 条关系
   Future<void> _editRelation({int? index}) async {
     final others = [
@@ -587,21 +694,22 @@ class _EntryEditPageState extends State<EntryEditPage> {
                   labelText: '${widget.kind.label}名称 *',
                   border: const OutlineInputBorder()),
             ),
-            for (final f in _fields) ...[
-              const SizedBox(height: 16),
-              TextField(
-                controller: _fieldCtrls[f.key],
-                maxLines: f.lines == 1 ? 1 : null,
-                minLines: f.lines,
-                onChanged: (_) => _dirty = true,
-                decoration: InputDecoration(
-                  labelText: f.label,
-                  hintText: f.hint,
-                  alignLabelWithHint: true,
-                  border: const OutlineInputBorder(),
+            for (final f in _fields)
+              if (f.key != 'appellations') ...[
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _fieldCtrls[f.key],
+                  maxLines: f.lines == 1 ? 1 : null,
+                  minLines: f.lines,
+                  onChanged: (_) => _dirty = true,
+                  decoration: InputDecoration(
+                    labelText: f.label,
+                    hintText: f.hint,
+                    alignLabelWithHint: true,
+                    border: const OutlineInputBorder(),
+                  ),
                 ),
-              ),
-            ],
+              ],
             for (final e in _extCtrls.entries) ...[
               const SizedBox(height: 16),
               TextField(
@@ -625,6 +733,56 @@ class _EntryEditPageState extends State<EntryEditPage> {
               ),
             ],
             if (widget.kind == EntryKind.character) ...[
+              const SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text('称呼',
+                                style:
+                                    Theme.of(context).textTheme.titleSmall),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _editAppellation(),
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('添加'),
+                          ),
+                        ],
+                      ),
+                      if (_parseApps().isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Text('还没有称呼,点右上角添加'),
+                        ),
+                      for (final (i, a) in _parseApps().indexed)
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading:
+                              const Icon(Icons.record_voice_over, size: 18),
+                          title: Text(a.call),
+                          subtitle: Text(a.by.isEmpty
+                              ? '所有人通用'
+                              : a.by.join('、')),
+                          onTap: () => _editAppellation(index: i),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 20),
+                            tooltip: '删除',
+                            onPressed: () => setState(() {
+                              final apps = _parseApps()..removeAt(i);
+                              _writeApps(apps);
+                            }),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
               const SizedBox(height: 16),
               Card(
                 child: Padding(
