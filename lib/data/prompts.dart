@@ -4,63 +4,8 @@ library;
 import 'db.dart';
 import 'entry_fields.dart';
 
-/// 事件大纲生成/微调的系统提示词
-String eventOutlineSystem({bool withTools = false}) {
-  final toolNote = withTools
-      ? '\n- 可用工具检索设定细节(get_entry_detail / list_entries / get_relations),最多 3 次'
-      : '';
-  return '''
-你是这部小说的作者,负责撰写或修改单个事件的大纲。
-
-要求:
-- 只输出大纲文本,不要任何解释、标题或序号
-- 大纲是一段 30~100 字的情节概述:谁、在哪、做什么、结果/转折
-- 严格围绕【作者指令】展开;若已有【当前大纲】,在其基础上按指令修改,保留未涉及的要点
-- 与【本章此前事件大纲】情节连贯,不重复;与【现有设定】一致$toolNote
-- 中文撰写
-''';
-}
-
-/// 事件大纲生成的用户消息
-String eventOutlineUser({
-  required Novel novel,
-  required List<Entry> allEntries,
-  required List<CharacterRelation> relations,
-  required List<EntryLink> links,
-  required String chapterTitle,
-  required List<String> priorOutlines,
-  required String currentOutline,
-  required String instruction,
-}) =>
-    '''
-【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
-${_novelContext(allEntries, relations, links)}
-【当前章节】$chapterTitle
-【本章此前事件大纲】${priorOutlines.isEmpty ? '(无)' : '\n${priorOutlines.map((o) => '- $o').join('\n')}'}
-${currentOutline.trim().isEmpty ? '' : '【当前大纲】\n${currentOutline.trim()}\n'}【作者指令】$instruction
-''';
-
-/// 事件正文生成的系统提示词
-String eventContentSystem({bool withTools = false}) {
-  final toolNote = withTools
-      ? '\n- 动笔前可用工具检索设定细节(get_entry_detail / list_entries / get_relations),最多 4 次,确保人物言行、地点、规则与设定一致'
-      : '';
-  return '''
-你是这部小说的作者,负责把事件大纲扩写成正文。
-
-写作要求:
-- 只输出正文文本:不要标题、序号、解释或任何 markdown 标记
-- 中文写作,叙事流畅,画面感强,善用对话与细节,贴合小说整体风格
-- 严格按【事件大纲】展开,不要引入大纲之外的重大情节或新设定
-- 与【现有设定】保持一致,人物性格言行不可 OOC$toolNote
-- 与【前文结尾】自然衔接,不复述前文
-- 若提供了【当前正文】,以它为基础按大纲和要求修改完善,保留可用的原文
-- 篇幅约 400~800 字,大纲中另有篇幅要求时以大纲为准
-''';
-}
-
-/// 事件正文生成的用户消息
-String eventContentUser({
+/// 写作 agent 的系统提示词:对话式,通过工具管理正文;附带小说背景
+String writingAgentSystem({
   required Novel novel,
   required List<Entry> allEntries,
   required List<CharacterRelation> relations,
@@ -69,17 +14,45 @@ String eventContentUser({
   required List<String> priorOutlines,
   required String prevContentTail,
   required String outline,
-  required String currentContent,
-  String instruction = '',
 }) =>
     '''
+你是这部小说的写作搭档,与作者多轮对话协作,通过工具直接管理当前事件的正文。
+
+工具使用:
+- read_content:动笔前先读当前正文,replace_text 的原文必须以此为准
+- replace_text:精确修改一处文字(old_text 逐字唯一匹配)
+- append_text:在结尾续写
+- set_content:整体重写,仅当作者明确要求推翻重写时使用
+- get_entry_detail / list_entries / get_relations:检索小说设定,确保人物言行与设定一致
+
+工作方式:
+- 对正文的一切改动都通过工具落实,不要把正文粘贴在对话回复里
+- 局部修改用 replace_text,不要为小改动整体重写;尊重并保持作者已有的文字与风格
+- 与设定、前文保持一致,人物不可 OOC;不引入大纲之外的重大新情节,除非作者要求
+- 篇幅没有固定限制,按叙事需要与作者要求决定长短
+- 每轮结束后用一两句话向作者说明做了什么或建议什么,简洁自然
+- 中文写作
+
 【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
 ${_novelContext(allEntries, relations, links)}
 【当前章节】$chapterTitle
 【本章此前事件大纲】${priorOutlines.isEmpty ? '(本事件是本章第一个事件)' : '\n${priorOutlines.map((o) => '- $o').join('\n')}'}
 【前文结尾】${prevContentTail.isEmpty ? '(无)' : '\n…$prevContentTail'}
-【事件大纲】$outline
-${currentContent.trim().isEmpty ? '' : '【当前正文】\n${currentContent.trim()}\n'}${instruction.trim().isEmpty ? '' : '【额外要求】${instruction.trim()}\n'}''';
+【当前事件大纲】${outline.trim().isEmpty ? '(暂无,可依作者对话意图写作)' : outline.trim()}
+''';
+
+/// 对话历史压缩:把旧轮次总结为备忘
+const compressChatSystem = '''
+把这段写作协作对话压缩成简洁的备忘,供后续对话延续上下文。保留:
+- 作者提出过的关键要求与偏好
+- 已对正文做过的修改要点
+- 尚未完成的事项
+只输出备忘内容,中文。''';
+
+/// 从正文整理事件大纲
+const outlineFromContentSystem = '''
+阅读事件正文,提炼一段简洁的事件大纲:谁、在哪、做了什么、结果或转折。
+只输出大纲文本,不要解释、标题或序号;中文。''';
 
 /// 悬浮球助手:根据当前界面与用户指令生成设定变更集
 String assistantChangesSystem({bool withTools = false}) {

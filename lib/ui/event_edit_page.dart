@@ -6,8 +6,9 @@ import '../data/llm_client.dart';
 import '../data/novel_tools.dart';
 import '../data/prompts.dart';
 import '../data/settings.dart';
+import '../data/writing_tools.dart';
 
-/// 事件编辑:大纲 + 正文,AI 按大纲生成/完善正文
+/// 事件编辑:大纲 + 正文 + 对话式写作 agent
 class EventEditPage extends StatefulWidget {
   const EventEditPage(
       {super.key,
@@ -29,13 +30,26 @@ class EventEditPage extends StatefulWidget {
   State<EventEditPage> createState() => _EventEditPageState();
 }
 
+class _ChatMsg {
+  _ChatMsg(this.isUser, this.text);
+  final bool isUser;
+  final String text;
+}
+
 class _EventEditPageState extends State<EventEditPage> {
   late final _outlineCtrl =
       TextEditingController(text: widget.event?.outline ?? '');
   late final _contentCtrl =
       TextEditingController(text: widget.event?.content ?? '');
-  final _aiCtrl = TextEditingController();
-  bool _generating = false;
+  final _chatCtrl = TextEditingController();
+  final _chatScroll = ScrollController();
+
+  /// LLM 会话(system + 全部轮次,含工具调用过程)
+  final List<Map<String, dynamic>> _messages = [];
+
+  /// 展示用消息
+  final List<_ChatMsg> _chatUi = [];
+  bool _busy = false;
   bool _dirty = false;
 
   PageSnapshot _ctxProvider() => PageSnapshot(
@@ -55,7 +69,8 @@ class _EventEditPageState extends State<EventEditPage> {
     AppContextRegistry.pop(_ctxProvider);
     _outlineCtrl.dispose();
     _contentCtrl.dispose();
-    _aiCtrl.dispose();
+    _chatCtrl.dispose();
+    _chatScroll.dispose();
     super.dispose();
   }
 
@@ -70,6 +85,11 @@ class _EventEditPageState extends State<EventEditPage> {
       ));
   }
 
+  List<String> get _priorOutlines => [
+        for (final e in widget.priorEvents)
+          if (e.outline.trim().isNotEmpty) e.outline.trim()
+      ];
+
   /// 前一个事件正文的结尾(衔接文风用)
   String get _prevTail {
     for (final e in widget.priorEvents.reversed) {
@@ -81,125 +101,133 @@ class _EventEditPageState extends State<EventEditPage> {
     return '';
   }
 
-  Future<({
-    LlmSettings settings,
-    List<Entry> all,
-    List<CharacterRelation> rels,
-    List<EntryLink> links
-  })> _loadContext() async {
-    final settings = await SettingsStore.loadFor(LlmPurpose.writing);
+  Future<void> _initSession() async {
     final all = await widget.db.allEntriesOf(widget.novel.id);
     final rels = await widget.db.relationsOfNovel(widget.novel.id);
     final links = await widget.db.linksOfNovel(widget.novel.id);
-    return (settings: settings, all: all, rels: rels, links: links);
+    _messages.add({
+      'role': 'system',
+      'content': writingAgentSystem(
+        novel: widget.novel,
+        allEntries: all,
+        relations: rels,
+        links: links,
+        chapterTitle: widget.chapter.title,
+        priorOutlines: _priorOutlines,
+        prevContentTail: _prevTail,
+        outline: _outlineCtrl.text,
+      ),
+    });
   }
 
-  List<String> get _priorOutlines => [
-        for (final e in widget.priorEvents)
-          if (e.outline.trim().isNotEmpty) e.outline.trim()
-      ];
-
-  Future<String> _chat(LlmSettings settings,
-      {required String system, required String user}) async {
+  /// 历史过长时压缩旧轮次为备忘
+  Future<void> _maybeCompress(LlmSettings settings) async {
+    final histSize = _messages
+        .skip(1)
+        .fold<int>(0, (s, m) => s + (m['content']?.toString().length ?? 0));
+    if (histSize < 16000 || _messages.length < 10) return;
+    final keep = _messages.length - 4; // 保留最近几轮
+    final old = _messages.sublist(1, keep);
+    final text = [
+      for (final m in old)
+        if (m['content'] != null && (m['role'] == 'user' || m['role'] == 'assistant'))
+          '${m['role']}: ${m['content']}'
+    ].join('\n');
     try {
-      return await LlmClient.chatWithTools(
-        settings,
-        system: system,
-        user: user,
-        tools: novelToolSchemas,
-        onToolCall: NovelToolExecutor(widget.db, widget.novel.id).call,
-      );
-    } on ToolsUnsupportedException {
-      return await LlmClient.chat(settings, system: system, user: user);
+      final summary = await LlmClient.chat(settings,
+          system: compressChatSystem, user: text);
+      _messages.removeRange(1, keep);
+      _messages.insert(1, {
+        'role': 'user',
+        'content': '【此前对话备忘】\n$summary',
+      });
+    } catch (_) {
+      // 压缩失败不阻断对话
     }
   }
 
-  /// 按指令生成/微调大纲
-  Future<void> _generateOutline() async {
-    final instruction = _aiCtrl.text.trim();
-    if (instruction.isEmpty) {
-      _toast('先在 AI 指令框写下想法,如:主角在雨夜遭伏,发现对方是故人', error: true);
+  Future<void> _send() async {
+    final text = _chatCtrl.text.trim();
+    if (text.isEmpty || _busy) return;
+    setState(() {
+      _busy = true;
+      _chatUi.add(_ChatMsg(true, text));
+      _chatCtrl.clear();
+    });
+    _scrollChat();
+    try {
+      final settings = await SettingsStore.loadFor(LlmPurpose.writing);
+      if (_messages.isEmpty) await _initSession();
+      await _maybeCompress(settings);
+      _messages.add({'role': 'user', 'content': text});
+      final executor = WritingToolExecutor(
+        readContent: () => _contentCtrl.text,
+        writeContent: (v) {
+          if (!mounted) return;
+          setState(() {
+            _contentCtrl.text = v;
+            _dirty = true;
+          });
+        },
+        lookup: NovelToolExecutor(widget.db, widget.novel.id),
+      );
+      final reply = await LlmClient.chatTurn(
+        settings,
+        messages: _messages,
+        tools: [...writingToolSchemas, ...novelToolSchemas],
+        onToolCall: executor.call,
+      );
+      if (!mounted) return;
+      setState(() => _chatUi.add(_ChatMsg(false, reply.trim())));
+      _scrollChat();
+    } on LlmException catch (e) {
+      _toast(e.message, error: true);
+    } catch (e) {
+      _toast('对话失败：$e', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// 从正文整理大纲
+  Future<void> _outlineFromContent() async {
+    final content = _contentCtrl.text.trim();
+    if (content.isEmpty) {
+      _toast('正文还是空的,没法整理大纲', error: true);
       return;
     }
-    setState(() => _generating = true);
+    setState(() => _busy = true);
     try {
-      final ctx = await _loadContext();
-      final reply = await _chat(
-        ctx.settings,
-        system: eventOutlineSystem(withTools: true),
-        user: eventOutlineUser(
-          novel: widget.novel,
-          allEntries: ctx.all,
-          relations: ctx.rels,
-          links: ctx.links,
-          chapterTitle: widget.chapter.title,
-          priorOutlines: _priorOutlines,
-          currentOutline: _outlineCtrl.text,
-          instruction: instruction,
-        ),
-      );
+      final settings = await SettingsStore.loadFor(LlmPurpose.writing);
+      final reply = await LlmClient.chat(settings,
+          system: outlineFromContentSystem, user: content);
       if (!mounted) return;
       setState(() {
         _outlineCtrl.text = reply.trim();
-        _aiCtrl.clear();
         _dirty = true;
       });
-      _toast('大纲已生成,可微调后再生成正文');
+      _toast('大纲已从正文整理');
     } on LlmException catch (e) {
       _toast(e.message, error: true);
     } catch (e) {
-      _toast('生成失败：$e', error: true);
+      _toast('整理失败：$e', error: true);
     } finally {
-      if (mounted) setState(() => _generating = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  /// 按大纲(+可选指令)生成/微调正文
-  Future<void> _generate() async {
-    final outline = _outlineCtrl.text.trim();
-    if (outline.isEmpty) {
-      _toast('先写事件大纲,AI 才知道写什么', error: true);
-      return;
-    }
-    setState(() => _generating = true);
-    try {
-      final ctx = await _loadContext();
-      final reply = await _chat(
-        ctx.settings,
-        system: eventContentSystem(withTools: true),
-        user: eventContentUser(
-          novel: widget.novel,
-          allEntries: ctx.all,
-          relations: ctx.rels,
-          links: ctx.links,
-          chapterTitle: widget.chapter.title,
-          priorOutlines: _priorOutlines,
-          prevContentTail: _prevTail,
-          outline: outline,
-          currentContent: _contentCtrl.text,
-          instruction: _aiCtrl.text,
-        ),
-      );
-      if (!mounted) return;
-      setState(() {
-        _contentCtrl.text = reply.trim();
-        _aiCtrl.clear();
-        _dirty = true;
-      });
-      _toast('正文已生成,可微调后保存');
-    } on LlmException catch (e) {
-      _toast(e.message, error: true);
-    } catch (e) {
-      _toast('生成失败：$e', error: true);
-    } finally {
-      if (mounted) setState(() => _generating = false);
-    }
+  void _scrollChat() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_chatScroll.hasClients) {
+        _chatScroll.jumpTo(_chatScroll.position.maxScrollExtent);
+      }
+    });
   }
 
   Future<void> _save() async {
     final outline = _outlineCtrl.text.trim();
-    if (outline.isEmpty) {
-      _toast('事件大纲不能为空', error: true);
+    if (outline.isEmpty && _contentCtrl.text.trim().isEmpty) {
+      _toast('大纲与正文都为空,没有可保存的内容', error: true);
       return;
     }
     if (widget.event == null) {
@@ -255,66 +283,28 @@ class _EventEditPageState extends State<EventEditPage> {
         body: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: TextField(
                 controller: _outlineCtrl,
-                autofocus: isNew,
-                minLines: 4,
-                maxLines: 10,
+                minLines: 2,
+                maxLines: 6,
                 onChanged: (_) => _dirty = true,
-                decoration: const InputDecoration(
-                  labelText: '事件大纲 *',
-                  hintText: '这一段发生什么:谁、在哪、做了什么、结果如何',
+                decoration: InputDecoration(
+                  labelText: '事件大纲',
+                  hintText: '可手写,或写完正文后点右下角"整理"',
                   alignLabelWithHint: true,
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.sync_alt),
+                    tooltip: '从正文整理大纲',
+                    onPressed: _busy ? null : _outlineFromContent,
+                  ),
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: TextField(
-                controller: _aiCtrl,
-                minLines: 1,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'AI 指令(可选)',
-                  hintText: '写大纲:描述情节想法;改正文:如“把气氛写得更压抑”',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '指令驱动大纲;大纲(+指令)驱动正文',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _generating ? null : _generateOutline,
-                    icon: const Icon(Icons.notes, size: 18),
-                    label: const Text('写大纲'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.tonalIcon(
-                    onPressed: _generating ? null : _generate,
-                    icon: _generating
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.auto_awesome),
-                    label: Text(_generating ? '生成中…' : '写正文'),
-                  ),
-                ],
               ),
             ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: TextField(
                   controller: _contentCtrl,
                   expands: true,
@@ -322,15 +312,95 @@ class _EventEditPageState extends State<EventEditPage> {
                   textAlignVertical: TextAlignVertical.top,
                   onChanged: (_) => _dirty = true,
                   decoration: const InputDecoration(
-                    labelText: '正文',
+                    labelText: '正文(AI 通过对话直接修改这里)',
                     alignLabelWithHint: true,
                     border: OutlineInputBorder(),
                   ),
                 ),
               ),
             ),
+            _chatPanel(context),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _chatPanel(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+            top: BorderSide(color: Theme.of(context).dividerColor)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_chatUi.isNotEmpty)
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: ListView.builder(
+                controller: _chatScroll,
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                itemCount: _chatUi.length,
+                itemBuilder: (context, i) {
+                  final m = _chatUi[i];
+                  return Align(
+                    alignment: m.isUser
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      constraints: BoxConstraints(
+                          maxWidth:
+                              MediaQuery.sizeOf(context).width * 0.75),
+                      decoration: BoxDecoration(
+                        color: m.isUser
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: SelectableText(m.text),
+                    ),
+                  );
+                },
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _chatCtrl,
+                    minLines: 1,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      hintText: '与 AI 对话写作:写一段/改一处/续写…',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _send(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  onPressed: _busy ? null : _send,
+                  icon: _busy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.send),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

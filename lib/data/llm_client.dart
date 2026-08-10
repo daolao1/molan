@@ -200,6 +200,81 @@ class LlmClient {
       _fail(e);
     }
   }
+  /// 会话式工具循环:在调用方持有的 [messages] 上继续对话(user 消息已追加),
+  /// 工具调用过程与最终回复都会留在 messages 中,构成对话记忆。
+  static Future<String> chatTurn(
+    LlmSettings s, {
+    required List<Map<String, dynamic>> messages,
+    required List<Map<String, dynamic>> tools,
+    required Future<String> Function(String name, Map<String, dynamic> args)
+        onToolCall,
+    int maxRounds = 8,
+  }) async {
+    if (s.model.trim().isEmpty) {
+      throw LlmException('请先在设置中配置 LLM API 与模型');
+    }
+    try {
+      for (var round = 0; round < maxRounds; round++) {
+        final resp = await http
+            .post(Uri.parse('${_base(s)}/chat/completions'),
+                headers: _headers(s),
+                body: jsonEncode({
+                  'model': s.model.trim(),
+                  'messages': messages,
+                  'tools': tools,
+                }))
+            .timeout(const Duration(seconds: 180));
+        if (resp.statusCode == 400 || resp.statusCode == 404) {
+          throw ToolsUnsupportedException(_errorText(resp));
+        }
+        if (resp.statusCode != 200) {
+          throw LlmException('HTTP ${resp.statusCode}:${_errorText(resp)}');
+        }
+        final data = jsonDecode(utf8.decode(resp.bodyBytes));
+        final msg = data['choices']?[0]?['message'] as Map<String, dynamic>?;
+        if (msg == null) throw LlmException('模型返回格式异常');
+        messages.add(msg);
+        final toolCalls = msg['tool_calls'] as List?;
+        if (toolCalls == null || toolCalls.isEmpty) {
+          final content = msg['content'] as String?;
+          if (content == null || content.trim().isEmpty) {
+            throw LlmException('模型返回了空内容');
+          }
+          return content;
+        }
+        for (final tc in toolCalls) {
+          final fn = tc['function'] as Map<String, dynamic>? ?? {};
+          final name = fn['name'] as String? ?? '';
+          Map<String, dynamic> args;
+          try {
+            final raw = fn['arguments'] as String? ?? '{}';
+            args = raw.trim().isEmpty
+                ? {}
+                : (jsonDecode(raw) as Map).cast<String, dynamic>();
+          } catch (_) {
+            args = {};
+          }
+          String result;
+          try {
+            result = await onToolCall(name, args);
+          } catch (e) {
+            result = '工具执行失败：$e';
+          }
+          messages.add({
+            'role': 'tool',
+            'tool_call_id': tc['id'] ?? '',
+            'content': result,
+          });
+        }
+      }
+      throw LlmException('工具调用轮次超限,请重试');
+    } on ToolsUnsupportedException {
+      rethrow;
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
   /// 从模型回复中提取 JSON 对象(容忍围栏与前后缀);值保留原始类型
   static Map<String, dynamic> parseJsonReply(String text) {
     final t = text.trim();
