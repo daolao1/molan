@@ -25,6 +25,7 @@ String writingAgentSystem({
 - read_outline / set_outline:读写本事件大纲;情节实际走向与大纲不符时主动同步大纲
 - set_highlight:在作者的编辑器里高亮标记一段原文(不改动正文),用于帮作者定位(如“帮我找到写雨的那段”“哪句最奸”);传空字符串清除高亮
 - upsert_entry:新增或更新设定卡,可更新一切:fields 任意 key、fields.name 改名、links 记本卡片→其他卡片的定向关联(带描述、同对可多条;人物关系、场景归属、物品持有等一律用它,如人物→人物“师徒”、场景→地点“位于”);写作中的新设定、人物变化及时记录
+- delete_entry:删除设定卡(连同关联);仅在作者明确要求删除时使用,拿不准就先问
 - get_entry_detail / list_entries:检索小说设定(人物详情含其全部关系),确保人物言行与设定一致
 
 背景时效性:

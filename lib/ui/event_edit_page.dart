@@ -143,6 +143,7 @@ class _EventEditPageState extends State<EventEditPage>
     'set_outline': '更新大纲',
     'set_highlight': '高亮标记',
     'upsert_entry': '更新设定',
+    'delete_entry': '删除设定',
     'get_entry_detail': '查阅设定',
     'list_entries': '列出条目',
   };
@@ -545,6 +546,39 @@ class _EventEditPageState extends State<EventEditPage>
                 await widget.db.updateEntry(
                     cur.id, beforeEntry.name, beforeEntry.content);
                 await widget.db.replaceLinksFrom(cur.id, beforeLinks);
+              }
+              return null;
+            };
+          case 'delete_entry':
+            final kind =
+                EntryKind.values.asNameMap()[args['kind']?.toString()];
+            final nm = args['name']?.toString().trim() ?? '';
+            Entry? victim;
+            if (kind != null && nm.isNotEmpty) {
+              for (final e in await widget.db.allEntriesOf(widget.novel.id)) {
+                if (e.kind == kind.name && e.name == nm) {
+                  victim = e;
+                  break;
+                }
+              }
+            }
+            if (victim == null) break;
+            // 删除前快照内容与双向关联,回退时重建
+            final gone = victim;
+            final outLinks = [
+              for (final l in await widget.db.linksFrom(gone.id))
+                (toId: l.toEntryId, label: l.label)
+            ];
+            final inLinks = [
+              for (final l in await widget.db.linksTo(gone.id))
+                (fromId: l.fromEntryId, label: l.label)
+            ];
+            revert = () async {
+              final newId = await widget.db.createEntry(
+                  widget.novel.id, kind!, gone.name, gone.content);
+              await widget.db.replaceLinksFrom(newId, outLinks);
+              for (final l in inLinks) {
+                await widget.db.upsertLink(l.fromId, newId, l.label);
               }
               return null;
             };
@@ -1072,6 +1106,7 @@ class _EventEditPageState extends State<EventEditPage>
           if (args['fields'] is Map) ...(args['fields'] as Map).keys,
           if (args['links'] is List) '关联×${(args['links'] as List).length}',
         ].join('、')})',
+      'delete_entry' => '$label「${args['name']}」',
       'get_entry_detail' => '$label「${args['name']}」',
       _ => label,
     };
@@ -1307,6 +1342,7 @@ class _EventEditPageState extends State<EventEditPage>
       'set_outline' => '$label “${s(args['text'])}”',
       'set_highlight' => '$label “${s(args['text'])}”',
       'upsert_entry' => '$label「${args['name']}」',
+      'delete_entry' => '$label「${args['name']}」',
       _ => label,
     };
   }

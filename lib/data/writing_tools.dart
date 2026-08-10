@@ -130,6 +130,24 @@ const writingToolSchemas = [
       },
     },
   },
+  {
+    'type': 'function',
+    'function': {
+      'name': 'delete_entry',
+      'description': '删除一张设定卡(连同其全部关联);仅在作者明确要求删除时使用',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'kind': {
+            'type': 'string',
+            'enum': ['character', 'location', 'item', 'scene', 'lore'],
+          },
+          'name': {'type': 'string', 'description': '条目名称(必须完全一致)'},
+        },
+        'required': ['kind', 'name'],
+      },
+    },
+  },
 ];
 
 /// 执行正文编辑工具;设定检索类工具转发给 [NovelToolExecutor]
@@ -218,9 +236,25 @@ class WritingToolExecutor {
         return '已更新大纲';
       case 'upsert_entry':
         return _upsertEntry(args);
+      case 'delete_entry':
+        return _deleteEntry(args);
       default:
         return lookup.call(name, args);
     }
+  }
+
+  Future<String> _deleteEntry(Map<String, dynamic> args) async {
+    final kind = EntryKind.values.asNameMap()[args['kind']?.toString()];
+    final name = args['name']?.toString().trim() ?? '';
+    if (kind == null || name.isEmpty) return '失败:kind 或 name 无效';
+    final all = await db.allEntriesOf(novelId);
+    for (final e in all) {
+      if (e.kind == kind.name && e.name == name) {
+        await db.deleteEntry(e.id);
+        return '已删除${kind.label}「$name」及其关联';
+      }
+    }
+    return '失败:未找到${kind.label}「$name」';
   }
 
   Future<String> _upsertEntry(Map<String, dynamic> args) async {
