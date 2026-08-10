@@ -1,0 +1,125 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 18 * * *' # 北京时间每天凌晨 2 点
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      fresh: ${{ steps.diff.outputs.fresh }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        name: main 相对 nightly 标签有新提交才继续
+        run: |
+          if git rev-parse -q --verify refs/tags/nightly >/dev/null && \
+             [ "$(git rev-parse refs/tags/nightly)" = "$(git rev-parse HEAD)" ]; then
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  android:
+    needs: check
+    if: needs.check.outputs.fresh == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --release
+      - run: mv build/app/outputs/flutter-apk/app-release.apk molan-nightly-android.apk
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly (${{ github.sha }})
+          prerelease: true
+          files: molan-nightly-android.apk
+
+  windows:
+    needs: check
+    if: needs.check.outputs.fresh == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath molan-nightly-windows-x64.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly (${{ github.sha }})
+          prerelease: true
+          files: molan-nightly-windows-x64.zip
+
+  macos:
+    needs: check
+    if: needs.check.outputs.fresh == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build macos --release
+      # 无开发者证书,ad-hoc 签名保证 Apple Silicon 可运行;用户首次打开需 xattr 去隔离
+      - run: codesign --force --deep -s - build/macos/Build/Products/Release/molan.app
+      - run: ditto -c -k --keepParent build/macos/Build/Products/Release/molan.app molan-nightly-macos.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly (${{ github.sha }})
+          prerelease: true
+          files: molan-nightly-macos.zip
+
+  linux:
+    needs: check
+    if: needs.check.outputs.fresh == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build linux --release
+      - run: tar -czf molan-nightly-linux-x64.tar.gz -C build/linux/x64/release/bundle .
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly (${{ github.sha }})
+          prerelease: true
+          files: molan-nightly-linux-x64.tar.gz
+
+  # 构建完成后把 nightly 标签移到当前提交,供下次比对
+  retag:
+    needs: [android, windows, macos, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          git tag -f nightly
+          git push -f origin nightly

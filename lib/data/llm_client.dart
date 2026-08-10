@@ -39,13 +39,31 @@ class LlmClient {
       };
 
   static Never _fail(Object e) {
-    var msg = e is LlmException ? e.message : '请求失败:$e';
+    // LlmException 子类(如取消)原样重抛,保留类型供调用方分流
+    if (e is LlmException) throw e;
+    var msg = '请求失败:$e';
     if (kIsWeb && e is http.ClientException) {
       msg = '浏览器调试环境下请求被拦,可能是服务商未开放 CORS;'
           '此限制仅存在于 web 调试,桌面/手机端不受影响';
     }
     throw LlmException(msg);
   }
+
+  /// 400 仅在错误文本提及 tool/function 时才判定为不支持工具,避免掩盖真实错误
+  static Never _throwToolsOr400(String err) {
+    final low = err.toLowerCase();
+    if (low.contains('tool') || low.contains('function')) {
+      throw ToolsUnsupportedException(err);
+    }
+    throw LlmException('HTTP 400:$err');
+  }
+
+  /// 只保留协议字段再入历史,防止 reasoning_content 等扩展字段回传被拒
+  static Map<String, dynamic> _cleanMsg(Map<String, dynamic> m) => {
+        'role': m['role'],
+        'content': m['content'],
+        if (m['tool_calls'] != null) 'tool_calls': m['tool_calls'],
+      };
 
   /// 安全取 choices[0]:部分服务会返回空 choices 帧(如流式末尾的 usage 块)
   static dynamic _firstChoice(dynamic data) {
@@ -161,9 +179,10 @@ class LlmClient {
                   'tools': tools,
                 }))
             .timeout(const Duration(seconds: 120));
-        if (resp.statusCode == 400 || resp.statusCode == 404) {
+        if (resp.statusCode == 404) {
           throw ToolsUnsupportedException(_errorText(resp));
         }
+        if (resp.statusCode == 400) _throwToolsOr400(_errorText(resp));
         if (resp.statusCode != 200) {
           throw LlmException('HTTP ${resp.statusCode}：${_errorText(resp)}');
         }
@@ -178,7 +197,7 @@ class LlmClient {
           }
           return content;
         }
-        messages.add(msg);
+        messages.add(_cleanMsg(msg));
         for (final tc in toolCalls) {
           final fn = tc['function'] as Map<String, dynamic>? ?? {};
           final name = fn['name'] as String? ?? '';
@@ -235,24 +254,26 @@ class LlmClient {
                   'tools': tools,
                 }))
             .timeout(const Duration(seconds: 180));
-        if (resp.statusCode == 400 || resp.statusCode == 404) {
+        if (resp.statusCode == 404) {
           throw ToolsUnsupportedException(_errorText(resp));
         }
+        if (resp.statusCode == 400) _throwToolsOr400(_errorText(resp));
         if (resp.statusCode != 200) {
           throw LlmException('HTTP ${resp.statusCode}:${_errorText(resp)}');
         }
         final data = jsonDecode(utf8.decode(resp.bodyBytes));
         final msg = _firstChoice(data)?['message'] as Map<String, dynamic>?;
         if (msg == null) throw LlmException('模型返回格式异常');
-        messages.add(msg);
         final toolCalls = msg['tool_calls'] as List?;
         if (toolCalls == null || toolCalls.isEmpty) {
           final content = msg['content'] as String?;
           if (content == null || content.trim().isEmpty) {
             throw LlmException('模型返回了空内容');
           }
+          messages.add(_cleanMsg(msg));
           return content;
         }
+        messages.add(_cleanMsg(msg));
         for (final tc in toolCalls) {
           final fn = tc['function'] as Map<String, dynamic>? ?? {};
           final name = fn['name'] as String? ?? '';
@@ -321,9 +342,12 @@ class LlmClient {
             });
           final resp =
               await client.send(req).timeout(const Duration(seconds: 60));
-          if (resp.statusCode == 400 || resp.statusCode == 404) {
+          if (resp.statusCode == 404) {
             throw ToolsUnsupportedException(
                 await resp.stream.bytesToString());
+          }
+          if (resp.statusCode == 400) {
+            _throwToolsOr400(await resp.stream.bytesToString());
           }
           if (resp.statusCode != 200) {
             throw LlmException(
@@ -342,7 +366,9 @@ class LlmClient {
             }
             if (!line.startsWith('data:')) continue;
             final payload = line.substring(5).trim();
-            if (payload.isEmpty || payload == '[DONE]') continue;
+            if (payload.isEmpty) continue;
+            // 部分服务发完 [DONE] 后不关连接,必须主动退出避免空挂到超时
+            if (payload == '[DONE]') break;
             final Map<String, dynamic> j;
             try {
               j = jsonDecode(payload) as Map<String, dynamic>;
@@ -360,7 +386,22 @@ class LlmClient {
             if (tcs is List) {
               for (final tc in tcs) {
                 if (tc is! Map) continue;
-                final idx = tc['index'] as int? ?? 0;
+                // index 缺失时:新 id 开新槽,否则并入最后一个槽
+                int idx;
+                final rawIdx = tc['index'];
+                if (rawIdx is int) {
+                  idx = rawIdx;
+                } else {
+                  final id = tc['id'];
+                  final isNewId = id is String &&
+                      id.isNotEmpty &&
+                      !toolAcc.values.any((a) => a['id'] == id);
+                  idx = toolAcc.isEmpty
+                      ? 0
+                      : isNewId
+                          ? (toolAcc.keys.reduce((a, b) => a > b ? a : b) + 1)
+                          : toolAcc.keys.reduce((a, b) => a > b ? a : b);
+                }
                 final acc = toolAcc.putIfAbsent(
                     idx, () => {'id': '', 'name': '', 'args': ''});
                 if (tc['id'] is String) acc['id'] = tc['id'] as String;
@@ -479,7 +520,7 @@ class LlmClient {
         }
       } catch (_) {}
     }
-    // 容忍 {"items":[…]} 式包裹
+    // 容忍 {"items":[…]} 式包裹;跳过空数组避免取错键
     final os = t.indexOf('{');
     final oe = t.lastIndexOf('}');
     if (os >= 0 && oe > os) {
@@ -487,7 +528,7 @@ class LlmClient {
         final obj = jsonDecode(t.substring(os, oe + 1));
         if (obj is Map) {
           for (final v in obj.values) {
-            if (v is List) {
+            if (v is List && v.isNotEmpty && v.first is Map) {
               return [
                 for (final e in v)
                   if (e is Map) e.cast<String, dynamic>()

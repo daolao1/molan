@@ -101,10 +101,11 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(chapters);
             await m.createTable(chapterEvents);
           }
-          if (from < 6) {
+          // createTable 用当前表定义(已含新列),只有更老的库才需补列
+          if (from < 6 && from >= 5) {
             await m.addColumn(chapterEvents, chapterEvents.chatLog);
           }
-          if (from < 7) {
+          if (from < 7 && from >= 4) {
             await m.addColumn(entryLinks, entryLinks.label);
           }
           if (from < 8) {

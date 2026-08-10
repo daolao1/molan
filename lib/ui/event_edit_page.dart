@@ -220,9 +220,9 @@ class _EventEditPageState extends State<EventEditPage>
     }
   }
 
-  /// 当前对话序列化(不含 archived)
+  /// 当前对话序列化(不含 archived);messages 拷贝一份,归档后 clear 不影响
   Map<String, dynamic> _currentSession() => {
-        'messages': _messages,
+        'messages': List.of(_messages),
         'ui': [
           for (final m in _chatUi)
             if (!m.isReview)
@@ -793,10 +793,6 @@ class _EventEditPageState extends State<EventEditPage>
 
   Future<void> _save() async {
     final outline = _outlineCtrl.text.trim();
-    if (outline.isEmpty && _contentCtrl.text.trim().isEmpty) {
-      _toast('大纲与正文都为空,没有可保存的内容', error: true);
-      return;
-    }
     if (widget.event == null) {
       final id = await widget.db.createEvent(widget.chapter.id, outline);
       await widget.db.updateEvent(id,
