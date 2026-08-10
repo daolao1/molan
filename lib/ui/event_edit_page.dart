@@ -296,13 +296,27 @@ class _EventEditPageState extends State<EventEditPage>
     });
   }
 
-  /// 历史过长时压缩旧轮次为备忘
+  /// 历史过长时压缩旧轮次为备忘。
+  /// 阈值放宽以减少前缀缓存(KV cache)失效;切割点对齐到 user 消息,
+  /// 避免 assistant(tool_calls) 与 tool 结果被拆散导致请求非法
   Future<void> _maybeCompress(LlmSettings settings) async {
     final histSize = _messages
         .skip(1)
         .fold<int>(0, (s, m) => s + (m['content']?.toString().length ?? 0));
-    if (histSize < 16000 || _messages.length < 10) return;
-    final keep = _messages.length - 4; // 保留最近几轮
+    if (histSize < 60000 || _messages.length < 16) return;
+    // 从后往前数第 4 条 user 消息作为保留区起点
+    var keep = -1;
+    var users = 0;
+    for (var i = _messages.length - 1; i >= 1; i--) {
+      if (_messages[i]['role'] == 'user') {
+        users++;
+        if (users == 4) {
+          keep = i;
+          break;
+        }
+      }
+    }
+    if (keep <= 1) return;
     final old = _messages.sublist(1, keep);
     final text = [
       for (final m in old)
