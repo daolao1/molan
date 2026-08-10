@@ -7,7 +7,7 @@ const novelToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'get_entry_detail',
-      'description': '获取某个设定条目的完整详细内容;人物会附带其全部人物关系,
+      'description': '获取某个设定条目的完整详细内容;人物会附带其全部人物关系',
       'parameters': {
         'type': 'object',
         'properties': {
