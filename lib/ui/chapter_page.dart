@@ -18,6 +18,9 @@ class ChapterPage extends StatelessWidget {
 
   void _openEvent(BuildContext context,
       {ChapterEvent? event, required List<ChapterEvent> all}) {
+    final idx = event == null
+        ? all.length
+        : all.indexWhere((e) => e.id == event.id);
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -26,9 +29,9 @@ class ChapterPage extends StatelessWidget {
           novel: novel,
           chapter: chapter,
           event: event,
-          priorEvents: event == null
-              ? all
-              : all.takeWhile((e) => e.id != event.id).toList(),
+          priorEvents: all.sublist(0, idx < 0 ? all.length : idx),
+          followingEvents:
+              idx < 0 || idx + 1 > all.length ? const [] : all.sublist(idx + (event == null ? 0 : 1)),
         ),
       ),
     );

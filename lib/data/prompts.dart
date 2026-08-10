@@ -11,6 +11,7 @@ String writingAgentSystem({
   required List<EntryLink> links,
   required String chapterTitle,
   required List<String> priorOutlines,
+  List<String> followingOutlines = const [],
   required String prevContentTail,
   required String outline,
 }) =>
@@ -27,6 +28,7 @@ String writingAgentSystem({
 - upsert_entry:新增或更新设定卡:fields 限模板字段(内容放不进具体字段就并入备注)、fields.name 改名、links 记本卡片→其他卡片的定向关联(带描述、同对可多条;人物关系、场景归属、物品持有等一律用它);写作中的新设定、人物变化及时记录
 - delete_entry:删除设定卡(连同关联);仅在作者明确要求删除时使用,拿不准就先问
 - get_entry_detail / list_entries:检索小说设定(人物详情含其全部关系),确保人物言行与设定一致
+- list_chapters / get_event_content:查全书章节与事件目录、读任意事件正文;呼应其他章节情节、核对前文细节时用
 
 背景时效性:
 - 下方【小说】背景与设定摘要是会话开始时的快照,可能已过时;对话中你或作者可能已改过设定与大纲
@@ -50,6 +52,7 @@ String writingAgentSystem({
 ${_novelContext(allEntries, links)}
 【当前章节】$chapterTitle
 【本章此前事件大纲】${priorOutlines.isEmpty ? '(本事件是本章第一个事件)' : '\n${priorOutlines.map((o) => '- $o').join('\n')}'}
+【本章后续事件大纲】${followingOutlines.isEmpty ? '(暂无,本事件是本章最后一个)' : '\n${followingOutlines.map((o) => '- $o').join('\n')}'}
 【前文结尾】${prevContentTail.isEmpty ? '(无)' : '\n…$prevContentTail'}
 【当前事件大纲】${outline.trim().isEmpty ? '(暂无,可依作者对话意图写作)' : outline.trim()}
 ''';

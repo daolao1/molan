@@ -20,17 +20,23 @@ const novelToolSchemas = [
   {
     'type': 'function',
     'function': {
-      'name': 'list_entries',
-      'description': '列出本小说的设定条目名称,可按类型过滤',
+      'name': 'list_chapters',
+      'description': '全书章节与事件目录:每章标题及其事件序号、大纲、字数',
+      'parameters': {'type': 'object', 'properties': <String, dynamic>{}},
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
+      'name': 'get_event_content',
+      'description': '读取某章某事件的正文(序号见 list_chapters);过长会截断',
       'parameters': {
         'type': 'object',
         'properties': {
-          'kind': {
-            'type': 'string',
-            'enum': ['character', 'location', 'item', 'scene', 'lore', 'foreshadow'],
-            'description': '条目类型;省略则返回全部类型',
-          }
+          'chapter': {'type': 'integer', 'description': '章节序号,从 1 起'},
+          'event': {'type': 'integer', 'description': '事件序号,从 1 起'},
         },
+        'required': ['chapter', 'event'],
       },
     },
   },
@@ -49,9 +55,51 @@ class NovelToolExecutor {
         return _entryDetail(args['name'] as String? ?? '');
       case 'list_entries':
         return _listEntries(args['kind'] as String?);
+      case 'list_chapters':
+        return _listChapters();
+      case 'get_event_content':
+        return _eventContent(args['chapter'], args['event']);
       default:
         return '未知工具:$name';
     }
+  }
+
+  Future<String> _listChapters() async {
+    final chapters = await db.watchChapters(novelId).first;
+    if (chapters.isEmpty) return '(本书还没有章节)';
+    final buf = StringBuffer();
+    for (var c = 0; c < chapters.length; c++) {
+      buf.writeln('第 ${c + 1} 章《${chapters[c].title}》');
+      final events = await db.eventsOf(chapters[c].id);
+      for (var i = 0; i < events.length; i++) {
+        final o = events[i].outline.trim();
+        final len = events[i].content.length;
+        buf.writeln(
+            '  事件 ${i + 1}(${len > 0 ? '$len 字' : '无正文'}):${o.isEmpty ? '(无大纲)' : o}');
+      }
+    }
+    return buf.toString().trimRight();
+  }
+
+  Future<String> _eventContent(Object? chapterNo, Object? eventNo) async {
+    final c = chapterNo is int ? chapterNo : int.tryParse('$chapterNo') ?? 0;
+    final ev = eventNo is int ? eventNo : int.tryParse('$eventNo') ?? 0;
+    final chapters = await db.watchChapters(novelId).first;
+    if (c < 1 || c > chapters.length) {
+      return '失败:章节序号 $c 越界(共 ${chapters.length} 章)';
+    }
+    final events = await db.eventsOf(chapters[c - 1].id);
+    if (ev < 1 || ev > events.length) {
+      return '失败:事件序号 $ev 越界(该章共 ${events.length} 个事件)';
+    }
+    final e = events[ev - 1];
+    final content = e.content.trim();
+    if (content.isEmpty) return '(该事件还没有正文)大纲:${e.outline}';
+    const cap = 4000;
+    final body = content.length <= cap
+        ? content
+        : '${content.substring(0, cap)}\n…(已截断,全文共 ${content.length} 字)';
+    return '第 $c 章《${chapters[c - 1].title}》事件 $ev\n大纲:${e.outline}\n正文:\n$body';
   }
 
   Future<String> _entryDetail(String name) async {

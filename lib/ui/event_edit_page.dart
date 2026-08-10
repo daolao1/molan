@@ -20,6 +20,7 @@ class EventEditPage extends StatefulWidget {
       required this.novel,
       required this.chapter,
       required this.priorEvents,
+      this.followingEvents = const [],
       this.event});
 
   final AppDatabase db;
@@ -28,6 +29,9 @@ class EventEditPage extends StatefulWidget {
 
   /// 本章中位于本事件之前的事件(供上下文)
   final List<ChapterEvent> priorEvents;
+
+  /// 本章中位于本事件之后的事件(供前瞻)
+  final List<ChapterEvent> followingEvents;
   final ChapterEvent? event;
 
   @override
@@ -286,6 +290,11 @@ class _EventEditPageState extends State<EventEditPage>
           if (e.outline.trim().isNotEmpty) e.outline.trim()
       ];
 
+  List<String> get _followingOutlines => [
+        for (final e in widget.followingEvents)
+          if (e.outline.trim().isNotEmpty) e.outline.trim()
+      ];
+
   /// 前一个事件正文的结尾(衔接文风用)
   String get _prevTail {
     for (final e in widget.priorEvents.reversed) {
@@ -308,6 +317,7 @@ class _EventEditPageState extends State<EventEditPage>
         links: links,
         chapterTitle: widget.chapter.title,
         priorOutlines: _priorOutlines,
+        followingOutlines: _followingOutlines,
         prevContentTail: _prevTail,
         outline: _outlineCtrl.text,
       ),
