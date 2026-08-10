@@ -186,6 +186,16 @@ class _EventEditPageState extends State<EventEditPage> {
             _dirty = true;
           });
         },
+        readOutline: () => _outlineCtrl.text,
+        writeOutline: (v) {
+          if (!mounted) return;
+          setState(() {
+            _outlineCtrl.text = v;
+            _dirty = true;
+          });
+        },
+        db: widget.db,
+        novelId: widget.novel.id,
         lookup: NovelToolExecutor(widget.db, widget.novel.id),
       );
       final reply = await LlmClient.chatTurn(
