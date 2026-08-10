@@ -161,50 +161,66 @@ class _EventEditPageState extends State<EventEditPage>
     _restoreChat();
   }
 
+  /// 归档的历史会话:[{title, at, messages, ui}]
+  final List<Map<String, dynamic>> _archived = [];
+
   void _restoreChat() {
     final raw = widget.event?.chatLog ?? '';
     if (raw.trim().isEmpty) return;
     try {
       final data = jsonDecode(raw);
       if (data is! Map) return;
-      final msgs = data['messages'];
-      if (msgs is List) {
-        _messages.addAll([
-          for (final m in msgs)
-            if (m is Map) m.cast<String, dynamic>()
+      final archived = data['archived'];
+      if (archived is List) {
+        _archived.addAll([
+          for (final a in archived)
+            if (a is Map) a.cast<String, dynamic>()
         ]);
       }
-      final ui = data['ui'];
-      if (ui is List) {
-        for (final m in ui) {
-          if (m is! Map) continue;
-          final text = m['text']?.toString() ?? '';
-          switch (m['t']) {
-            case 'user':
-              _chatUi.add(_ChatMsg(true, text));
-            case 'ai':
-              _chatUi.add(_ChatMsg(false, text));
-            case 'tool':
-              _chatUi.add(_ChatMsg.tool(
-                text,
-                toolName: m['name']?.toString(),
-                toolArgs: m['args'] is Map
-                    ? (m['args'] as Map).cast<String, dynamic>()
-                    : null,
-                toolResult: m['result']?.toString(),
-              )..reviewed = m['reviewed'] is bool ? m['reviewed'] as bool : true);
-            case 'change':
-              _chatUi.add(_ChatMsg.change(text, null)
-                ..reviewed = m['reviewed'] is bool ? m['reviewed'] as bool : true);
-          }
-        }
-      }
+      _restoreCurrent(data);
     } catch (_) {
       // 损坏的历史不阻断页面
     }
   }
 
-  String _encodeChat() => jsonEncode({
+  /// 从一个会话对象(含 messages/ui)恢复到当前对话
+  void _restoreCurrent(Map data) {
+    final msgs = data['messages'];
+    if (msgs is List) {
+      _messages.addAll([
+        for (final m in msgs)
+          if (m is Map) m.cast<String, dynamic>()
+      ]);
+    }
+    final ui = data['ui'];
+    if (ui is List) {
+      for (final m in ui) {
+        if (m is! Map) continue;
+        final text = m['text']?.toString() ?? '';
+        switch (m['t']) {
+          case 'user':
+            _chatUi.add(_ChatMsg(true, text));
+          case 'ai':
+            _chatUi.add(_ChatMsg(false, text));
+          case 'tool':
+            _chatUi.add(_ChatMsg.tool(
+              text,
+              toolName: m['name']?.toString(),
+              toolArgs: m['args'] is Map
+                  ? (m['args'] as Map).cast<String, dynamic>()
+                  : null,
+              toolResult: m['result']?.toString(),
+            )..reviewed = m['reviewed'] is bool ? m['reviewed'] as bool : true);
+          case 'change':
+            _chatUi.add(_ChatMsg.change(text, null)
+              ..reviewed = m['reviewed'] is bool ? m['reviewed'] as bool : true);
+        }
+      }
+    }
+  }
+
+  /// 当前对话序列化(不含 archived)
+  Map<String, dynamic> _currentSession() => {
         'messages': _messages,
         'ui': [
           for (final m in _chatUi)
@@ -225,6 +241,11 @@ class _EventEditPageState extends State<EventEditPage>
               if (m.isTool && m.reviewed != null) 'reviewed': m.reviewed,
             }
         ],
+      };
+
+  String _encodeChat() => jsonEncode({
+        ..._currentSession(),
+        if (_archived.isNotEmpty) 'archived': _archived,
       });
 
   /// 每轮对话后自动持久化(已入库的事件)
@@ -1290,9 +1311,128 @@ class _EventEditPageState extends State<EventEditPage>
     };
   }
 
+  /// 归档当前对话并开启新对话(system 重建,背景刷新)
+  Future<void> _newChat() async {
+    setState(() {
+      _archiveCurrent();
+    });
+    await _persistChat();
+    _toast('已开启新对话,历史可在右上角找回');
+  }
+
+  /// 把当前对话移入归档并清空(调用方负责 setState/persist)
+  void _archiveCurrent() {
+    if (_chatUi.isEmpty) return;
+    // 未处理的审批项视为接受
+    for (final m in _chatUi) {
+      if ((m.isChange || m.isTool) && m.reviewed == null) m.reviewed = true;
+      m.revert = null;
+    }
+    String title = '对话';
+    for (final m in _chatUi) {
+      if (m.isUser && m.text.trim().isNotEmpty) {
+        final t = m.text.trim().split('\n').first;
+        title = t.length <= 24 ? t : '${t.substring(0, 24)}…';
+        break;
+      }
+    }
+    _archived.add({
+      'title': title,
+      'at': DateTime.now().toIso8601String(),
+      ..._currentSession(),
+    });
+    _messages.clear();
+    _chatUi.clear();
+  }
+
+  /// 历史会话列表:恢复 / 删除
+  Future<void> _showHistory() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSheet) => ListView(
+          shrinkWrap: true,
+          children: [
+            if (_archived.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('没有历史对话', textAlign: TextAlign.center),
+              ),
+            for (final (i, a) in _archived.indexed.toList().reversed)
+              ListTile(
+                leading: const Icon(Icons.forum_outlined),
+                title: Text(a['title']?.toString() ?? '对话'),
+                subtitle: Text(
+                    '${(a['at']?.toString() ?? '').replaceFirst('T', ' ').split('.').first}'
+                    ' · ${(a['ui'] is List) ? (a['ui'] as List).length : 0} 条消息'),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  _resumeArchived(i);
+                },
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                  tooltip: '删除这段历史',
+                  onPressed: () async {
+                    setSheet(() => _archived.removeAt(i));
+                    setState(() {});
+                    await _persistChat();
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 恢复某段历史为当前对话;当前对话先归档
+  Future<void> _resumeArchived(int index) async {
+    final target = _archived[index];
+    setState(() {
+      _archived.removeAt(index);
+      _archiveCurrent();
+      _restoreCurrent(target);
+    });
+    await _persistChat();
+    _scrollChat();
+    _toast('已恢复历史对话');
+  }
+
   Widget _chatTab(BuildContext context) {
     return Column(
       children: [
+        // 会话管理条
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _archived.isEmpty
+                      ? '当前对话'
+                      : '当前对话 · 另有 ${_archived.length} 段历史',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(
+                          color: Theme.of(context).colorScheme.outline),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.history, size: 20),
+                tooltip: '对话历史',
+                onPressed:
+                    _busy || _archived.isEmpty ? null : _showHistory,
+              ),
+              IconButton(
+                icon: const Icon(Icons.add_comment_outlined, size: 20),
+                tooltip: '新对话',
+                onPressed: _busy || _chatUi.isEmpty ? null : _newChat,
+              ),
+            ],
+          ),
+        ),
         Expanded(
           child: _chatUi.isEmpty
               ? Center(
