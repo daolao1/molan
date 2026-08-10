@@ -834,14 +834,8 @@ class _EventEditPageState extends State<EventEditPage>
 
   void _scrollChat() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_chatScroll.hasClients) return;
-      _chatScroll.jumpTo(_chatScroll.position.maxScrollExtent);
-      // 长内容(Markdown/卡片)常多帧才完成布局,再校正一次
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_chatScroll.hasClients) {
-          _chatScroll.jumpTo(_chatScroll.position.maxScrollExtent);
-        }
-      });
+      // reverse 列表的底部就是 offset 0,无需估算 maxScrollExtent
+      if (_chatScroll.hasClients) _chatScroll.jumpTo(0);
     });
   }
 
@@ -1611,10 +1605,13 @@ class _EventEditPageState extends State<EventEditPage>
                 )
               : ListView.builder(
                   controller: _chatScroll,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  reverse: true,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                   itemCount: _chatUi.length,
                   itemBuilder: (context, i) {
-                    final m = _chatUi[i];
+                    // reverse 列表:index 0 = 最新消息,天然贴底
+                    final idx = _chatUi.length - 1 - i;
+                    final m = _chatUi[idx];
                     if (m.isChange) return _changeCard(context, m);
                     if (m.isReview) return _reviewPanel(context, m);
                     if (m.isTool) return _toolCard(context, m);
@@ -1654,7 +1651,7 @@ class _EventEditPageState extends State<EventEditPage>
                             visualDensity: VisualDensity.compact,
                             color: Theme.of(context).colorScheme.outline,
                             onPressed:
-                                _busy ? null : () => _editAndResend(i),
+                                _busy ? null : () => _editAndResend(idx),
                           ),
                           Flexible(child: bubble),
                         ],
