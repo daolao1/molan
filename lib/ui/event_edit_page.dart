@@ -62,6 +62,9 @@ class _ChatMsg {
   String? toolResult;
   bool expanded = false;
 
+  /// 写操作的逆操作;返回 null=成功,否则为错误描述
+  Future<String?> Function()? revert;
+
   /// 本轮改动前的快照(拒绝时恢复)
   final ({String outline, String content})? snapshot;
 
@@ -153,7 +156,7 @@ class _EventEditPageState extends State<EventEditPage>
                     ? (m['args'] as Map).cast<String, dynamic>()
                     : null,
                 toolResult: m['result']?.toString(),
-              ));
+              )..reviewed = m['reviewed'] is bool ? m['reviewed'] as bool : true);
             case 'change':
               _chatUi.add(_ChatMsg.change(text, null)
                 ..reviewed = m['reviewed'] is bool ? m['reviewed'] as bool : true);
@@ -182,6 +185,7 @@ class _EventEditPageState extends State<EventEditPage>
               if (m.isTool && m.toolName != null) 'name': m.toolName,
               if (m.isTool && m.toolArgs != null) 'args': m.toolArgs,
               if (m.isTool && m.toolResult != null) 'result': m.toolResult,
+              if (m.isTool && m.reviewed != null) 'reviewed': m.reviewed,
             }
         ],
       });
@@ -300,9 +304,10 @@ class _EventEditPageState extends State<EventEditPage>
     setState(() {
       _busy = true;
       _stopRequested = false;
-      // 新一轮开始:未处理的变更卡视为接受
+      // 新一轮开始:未处理的审批项视为接受
       for (final m in _chatUi) {
-        if (m.isChange && m.reviewed == null) m.reviewed = true;
+        if ((m.isChange || m.isTool) && m.reviewed == null) m.reviewed = true;
+        m.revert = null;
       }
       _chatUi.add(_ChatMsg(true, uiText));
       _chatCtrl.clear();
@@ -362,13 +367,101 @@ class _EventEditPageState extends State<EventEditPage>
         novelId: widget.novel.id,
         lookup: NovelToolExecutor(widget.db, widget.novel.id),
       );
-      // 工具调用过程在对话流中可见(带参数详情)
+      // 工具调用过程在对话流中可见(带参数详情与逆操作)
       Future<String> loggedCall(String name, Map<String, dynamic> args) async {
         final log = _ChatMsg.tool('', toolName: name, toolArgs: args);
+        // 执行前捕获旧状态,构造分条回退
+        Future<String?> Function()? revert;
+        switch (name) {
+          case 'replace_text':
+            revert = () async {
+              final oldT = args['old_text'] as String? ?? '';
+              final newT = args['new_text'] as String? ?? '';
+              if (oldT.isEmpty) return '无法回退';
+              final c = _contentCtrl.text;
+              if (newT.isEmpty || newT.allMatches(c).length != 1) {
+                return '该处已被后续修改,无法单独回退';
+              }
+              setState(() {
+                _contentCtrl.text = c.replaceFirst(newT, oldT);
+                _dirty = true;
+              });
+              return null;
+            };
+          case 'append_text':
+            revert = () async {
+              final t = args['text'] as String? ?? '';
+              final c = _contentCtrl.text;
+              final idx = t.isEmpty ? -1 : c.lastIndexOf(t);
+              if (idx < 0) return '该段已被修改,无法回退';
+              setState(() {
+                _contentCtrl.text =
+                    (c.substring(0, idx) + c.substring(idx + t.length))
+                        .trimRight();
+                _dirty = true;
+              });
+              return null;
+            };
+          case 'set_content':
+            final before = _contentCtrl.text;
+            revert = () async {
+              setState(() {
+                _contentCtrl.text = before;
+                _dirty = true;
+              });
+              return null;
+            };
+          case 'set_outline':
+            final before = _outlineCtrl.text;
+            revert = () async {
+              setState(() {
+                _outlineCtrl.text = before;
+                _dirty = true;
+              });
+              return null;
+            };
+          case 'upsert_entry':
+            final kind =
+                EntryKind.values.asNameMap()[args['kind']?.toString()];
+            final nm = args['name']?.toString().trim() ?? '';
+            Entry? before;
+            if (kind != null && nm.isNotEmpty) {
+              for (final e in await widget.db.allEntriesOf(widget.novel.id)) {
+                if (e.kind == kind.name && e.name == nm) {
+                  before = e;
+                  break;
+                }
+              }
+            }
+            final beforeEntry = before;
+            revert = () async {
+              if (kind == null || nm.isEmpty) return '无法回退';
+              Entry? cur;
+              for (final e in await widget.db.allEntriesOf(widget.novel.id)) {
+                if (e.kind == kind.name && e.name == nm) {
+                  cur = e;
+                  break;
+                }
+              }
+              if (beforeEntry == null) {
+                if (cur != null) await widget.db.deleteEntry(cur.id);
+              } else if (cur != null) {
+                await widget.db.updateEntry(
+                    cur.id, beforeEntry.name, beforeEntry.content);
+              }
+              return null;
+            };
+        }
         if (mounted) setState(() => _chatUi.add(log));
         _scrollChat();
         final result = await executor.call(name, args);
-        if (mounted) setState(() => log.toolResult = result);
+        if (mounted) {
+          setState(() {
+            log.toolResult = result;
+            // 执行失败的操作无需审批
+            log.revert = result.startsWith('失败') ? null : revert;
+          });
+        }
         return result;
       }
 
@@ -420,19 +513,12 @@ class _EventEditPageState extends State<EventEditPage>
         } else {
           _chatUi.add(_ChatMsg(false, reply.trim()));
         }
-        // 本轮有改动 → 压栈并插入变更卡
+        // 回退栈仍保留轮级快照(undo 按钮兜底)
         final outlineChanged = snapshot.outline != _outlineCtrl.text;
         final contentChanged = snapshot.content != _contentCtrl.text;
         if (outlineChanged || contentChanged) {
           _history.add(snapshot);
           if (_history.length > 20) _history.removeAt(0);
-          final delta = _contentCtrl.text.length - snapshot.content.length;
-          final parts = [
-            if (contentChanged)
-              '正文${delta >= 0 ? '+' : ''}$delta 字',
-            if (outlineChanged) '大纲已更新',
-          ];
-          _chatUi.add(_ChatMsg.change('本轮改动:${parts.join(' · ')}', snapshot));
         }
       });
       // 在编辑页发的指令,给个简短回执
@@ -790,7 +876,10 @@ class _EventEditPageState extends State<EventEditPage>
         ? '…'
         : failed
             ? ' ✗'
-            : '';
+            : m.reviewed == false
+                ? '(已回退)'
+                : '';
+    final pending = m.revert != null && m.reviewed == null && !running;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: InkWell(
@@ -815,15 +904,52 @@ class _EventEditPageState extends State<EventEditPage>
                           ? Icons.hourglass_top
                           : failed
                               ? Icons.error_outline
-                              : Icons.build_circle_outlined,
+                              : m.reviewed == false
+                                  ? Icons.replay
+                                  : Icons.build_circle_outlined,
                       size: 14,
                       color: failed ? scheme.error : scheme.outline),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text('$summary$status',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: failed ? scheme.error : scheme.outline)),
+                            color: failed ? scheme.error : scheme.outline,
+                            decoration: m.reviewed == false
+                                ? TextDecoration.lineThrough
+                                : null)),
                   ),
+                  if (pending) ...[
+                    InkWell(
+                      onTap: () async {
+                        final err = await m.revert!();
+                        if (!mounted) return;
+                        if (err != null) {
+                          _toast(err, error: true);
+                        } else {
+                          setState(() => m.reviewed = false);
+                          await _persistChat();
+                        }
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Text('拒绝',
+                            style: TextStyle(
+                                fontSize: 12, color: scheme.error)),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () async {
+                        setState(() => m.reviewed = true);
+                        await _persistChat();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Text('接受',
+                            style: TextStyle(
+                                fontSize: 12, color: scheme.primary)),
+                      ),
+                    ),
+                  ],
                   Icon(m.expanded ? Icons.expand_less : Icons.expand_more,
                       size: 14, color: scheme.outline),
                 ],
