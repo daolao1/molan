@@ -161,9 +161,6 @@ class _EventEditPageState extends State<EventEditPage>
     _restoreChat();
   }
 
-  /// 恢复持久化的对话;system 背景可能过期,下次发送前重建
-  bool _systemStale = false;
-
   void _restoreChat() {
     final raw = widget.event?.chatLog ?? '';
     if (raw.trim().isEmpty) return;
@@ -176,7 +173,6 @@ class _EventEditPageState extends State<EventEditPage>
           for (final m in msgs)
             if (m is Map) m.cast<String, dynamic>()
         ]);
-        _systemStale = _messages.isNotEmpty;
       }
       final ui = data['ui'];
       if (ui is List) {
@@ -381,30 +377,10 @@ class _EventEditPageState extends State<EventEditPage>
     final turnStart = _chatUi.length;
     try {
       final settings = await SettingsStore.loadFor(LlmPurpose.writing);
+      // system 保持静态(仅新会话构建一次),前缀缓存友好;
+      // 设定时效性由 agent 用检索工具自行保证
       if (_messages.isEmpty) {
         await _initSession();
-      } else if (_systemStale) {
-        // 重建背景,设定/前文可能已变化
-        final all = await widget.db.allEntriesOf(widget.novel.id);
-        final links = await widget.db.linksOfNovel(widget.novel.id);
-        final sys = {
-          'role': 'system',
-          'content': writingAgentSystem(
-            novel: widget.novel,
-            allEntries: all,
-            links: links,
-            chapterTitle: widget.chapter.title,
-            priorOutlines: _priorOutlines,
-            prevContentTail: _prevTail,
-            outline: _outlineCtrl.text,
-          ),
-        };
-        if (_messages.isNotEmpty && _messages.first['role'] == 'system') {
-          _messages[0] = sys;
-        } else {
-          _messages.insert(0, sys);
-        }
-        _systemStale = false;
       }
       await _maybeCompress(settings);
       _messages.add({'role': 'user', 'content': fullText});
