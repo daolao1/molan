@@ -38,23 +38,38 @@ class _ChatMsg {
   _ChatMsg(this.isUser, this.text)
       : isChange = false,
         isTool = false,
+        isReview = false,
         snapshot = null;
 
   _ChatMsg.change(this.text, this.snapshot)
       : isUser = false,
         isChange = true,
-        isTool = false;
+        isTool = false,
+        isReview = false;
 
   _ChatMsg.tool(this.text, {this.toolName, this.toolArgs, this.toolResult})
       : isUser = false,
         isChange = false,
         isTool = true,
+        isReview = false,
+        snapshot = null;
+
+  _ChatMsg.review(this.ops)
+      : isUser = false,
+        isChange = false,
+        isTool = false,
+        isReview = true,
+        text = '',
         snapshot = null;
 
   final bool isUser;
   String text;
   final bool isChange;
   final bool isTool;
+  final bool isReview;
+
+  /// 审批面板引用的本轮写操作
+  List<_ChatMsg>? ops;
 
   /// 工具调用详情(展开查看)
   String? toolName;
@@ -103,6 +118,7 @@ class _EventEditPageState extends State<EventEditPage>
     'read_outline': '读取大纲',
     'set_outline': '更新大纲',
     'upsert_entry': '更新设定',
+    'upsert_relation': '更新人物关系',
     'get_entry_detail': '查阅设定',
     'list_entries': '列出条目',
     'get_relations': '查人物关系',
@@ -172,7 +188,8 @@ class _EventEditPageState extends State<EventEditPage>
         'messages': _messages,
         'ui': [
           for (final m in _chatUi)
-            {
+            if (!m.isReview)
+              {
               't': m.isChange
                   ? 'change'
                   : m.isTool
@@ -315,6 +332,7 @@ class _EventEditPageState extends State<EventEditPage>
     _scrollChat();
     final snapshot =
         (outline: _outlineCtrl.text, content: _contentCtrl.text);
+    final turnStart = _chatUi.length;
     try {
       final settings = await SettingsStore.loadFor(LlmPurpose.writing);
       if (_messages.isEmpty) {
@@ -420,6 +438,38 @@ class _EventEditPageState extends State<EventEditPage>
               });
               return null;
             };
+          case 'upsert_relation':
+            final fromName = args['from']?.toString().trim() ?? '';
+            final toName = args['to']?.toString().trim() ?? '';
+            // 捕获旧关系以便回退
+            String? oldLabel;
+            int? fromId, toId;
+            final chars = await widget.db.allEntriesOf(widget.novel.id);
+            for (final e in chars) {
+              if (e.kind == EntryKind.character.name) {
+                if (e.name == fromName) fromId = e.id;
+                if (e.name == toName) toId = e.id;
+              }
+            }
+            if (fromId != null && toId != null) {
+              for (final r
+                  in await widget.db.relationsOfNovel(widget.novel.id)) {
+                if (r.fromEntryId == fromId && r.toEntryId == toId) {
+                  oldLabel = r.label;
+                  break;
+                }
+              }
+            }
+            final fId = fromId, tId = toId, oldL = oldLabel;
+            revert = () async {
+              if (fId == null || tId == null) return '无法回退';
+              if (oldL == null) {
+                await widget.db.deleteRelationBetween(fId, tId);
+              } else {
+                await widget.db.upsertRelation(fId, tId, oldL);
+              }
+              return null;
+            };
           case 'upsert_entry':
             final kind =
                 EntryKind.values.asNameMap()[args['kind']?.toString()];
@@ -520,6 +570,12 @@ class _EventEditPageState extends State<EventEditPage>
           _history.add(snapshot);
           if (_history.length > 20) _history.removeAt(0);
         }
+        // 回合末统一审批:收集本轮可回退的写操作
+        final ops = [
+          for (final m in _chatUi.skip(turnStart))
+            if (m.isTool && m.revert != null && m.reviewed == null) m
+        ];
+        if (ops.isNotEmpty) _chatUi.add(_ChatMsg.review(ops));
       });
       // 在编辑页发的指令,给个简短回执
       if (_tab.index == 0) {
@@ -869,6 +925,8 @@ class _EventEditPageState extends State<EventEditPage>
       'set_outline' => '$label “${s(args['text'])}”',
       'upsert_entry' =>
         '$label「${args['name']}」(${args['fields'] is Map ? (args['fields'] as Map).keys.join('、') : ''})',
+      'upsert_relation' =>
+        '$label ${args['from']} →${args['label']}→ ${args['to']}',
       'get_entry_detail' => '$label「${args['name']}」',
       _ => label,
     };
@@ -879,7 +937,6 @@ class _EventEditPageState extends State<EventEditPage>
             : m.reviewed == false
                 ? '(已回退)'
                 : '';
-    final pending = m.revert != null && m.reviewed == null && !running;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: InkWell(
@@ -918,38 +975,6 @@ class _EventEditPageState extends State<EventEditPage>
                                 ? TextDecoration.lineThrough
                                 : null)),
                   ),
-                  if (pending) ...[
-                    InkWell(
-                      onTap: () async {
-                        final err = await m.revert!();
-                        if (!mounted) return;
-                        if (err != null) {
-                          _toast(err, error: true);
-                        } else {
-                          setState(() => m.reviewed = false);
-                          await _persistChat();
-                        }
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: Text('拒绝',
-                            style: TextStyle(
-                                fontSize: 12, color: scheme.error)),
-                      ),
-                    ),
-                    InkWell(
-                      onTap: () async {
-                        setState(() => m.reviewed = true);
-                        await _persistChat();
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: Text('接受',
-                            style: TextStyle(
-                                fontSize: 12, color: scheme.primary)),
-                      ),
-                    ),
-                  ],
                   Icon(m.expanded ? Icons.expand_less : Icons.expand_more,
                       size: 14, color: scheme.outline),
                 ],
@@ -1012,6 +1037,129 @@ class _EventEditPageState extends State<EventEditPage>
     return widgets;
   }
 
+  /// 回合末审批面板:分条拒绝/全部接受
+  Widget _reviewPanel(BuildContext context, _ChatMsg panel) {
+    final scheme = Theme.of(context).colorScheme;
+    final ops = panel.ops ?? const <_ChatMsg>[];
+    final pending = [for (final o in ops) if (o.reviewed == null) o];
+    final done = pending.isEmpty;
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(done ? Icons.check_circle_outline : Icons.rule,
+                  size: 16, color: scheme.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  done ? '本轮 ${ops.length} 项改动已处理' : '本轮 ${ops.length} 项改动,逐条确认:',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              if (!done)
+                FilledButton.tonal(
+                  style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact),
+                  onPressed: () async {
+                    setState(() {
+                      for (final o in pending) {
+                        o.reviewed = true;
+                      }
+                    });
+                    await _persistChat();
+                  },
+                  child: const Text('全部接受'),
+                ),
+            ],
+          ),
+          for (final o in ops)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _toolSummary(o),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.outline,
+                          decoration: o.reviewed == false
+                              ? TextDecoration.lineThrough
+                              : null),
+                    ),
+                  ),
+                  if (o.reviewed == null) ...[
+                    InkWell(
+                      onTap: () async {
+                        final err = await o.revert!();
+                        if (!mounted) return;
+                        if (err != null) {
+                          _toast(err, error: true);
+                        } else {
+                          setState(() => o.reviewed = false);
+                          await _persistChat();
+                        }
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Text('拒绝',
+                            style: TextStyle(
+                                fontSize: 12, color: scheme.error)),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () async {
+                        setState(() => o.reviewed = true);
+                        await _persistChat();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Text('接受',
+                            style: TextStyle(
+                                fontSize: 12, color: scheme.primary)),
+                      ),
+                    ),
+                  ] else if (o.reviewed == false)
+                    Text('已回退',
+                        style: TextStyle(fontSize: 12, color: scheme.error)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 工具操作的一句话摘要(审批面板复用)
+  String _toolSummary(_ChatMsg m) {
+    final name = m.toolName ?? '';
+    final args = m.toolArgs ?? const {};
+    final label = _toolLabels[name] ?? name;
+    String s(Object? v, [int max = 20]) {
+      final t = v?.toString().replaceAll('\n', ' ') ?? '';
+      return t.length <= max ? t : '${t.substring(0, max)}…';
+    }
+
+    return switch (name) {
+      'replace_text' => '$label “${s(args['old_text'])}” → “${s(args['new_text'])}”',
+      'append_text' => '$label +${(args['text']?.toString() ?? '').length} 字',
+      'set_content' => '$label(${(args['text']?.toString() ?? '').length} 字)',
+      'set_outline' => '$label “${s(args['text'])}”',
+      'upsert_entry' => '$label「${args['name']}」',
+      'upsert_relation' =>
+        '$label ${args['from']} →${args['label']}→ ${args['to']}',
+      _ => label,
+    };
+  }
+
   Widget _chatTab(BuildContext context) {
     return Column(
       children: [
@@ -1032,6 +1180,7 @@ class _EventEditPageState extends State<EventEditPage>
                   itemBuilder: (context, i) {
                     final m = _chatUi[i];
                     if (m.isChange) return _changeCard(context, m);
+                    if (m.isReview) return _reviewPanel(context, m);
                     if (m.isTool) return _toolCard(context, m);
                     return Align(
                       alignment: m.isUser

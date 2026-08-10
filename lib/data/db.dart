@@ -282,6 +282,28 @@ class AppDatabase extends _$AppDatabase {
         }
       });
 
+  /// 新增或更新一条定向关系
+  Future<void> upsertRelation(int fromId, int toId, String label) async {
+    final existing = await (select(characterRelations)
+          ..where((t) =>
+              t.fromEntryId.equals(fromId) & t.toEntryId.equals(toId)))
+        .get();
+    if (existing.isEmpty) {
+      await into(characterRelations).insert(CharacterRelationsCompanion
+          .insert(fromEntryId: fromId, toEntryId: toId, label: label));
+    } else {
+      await (update(characterRelations)
+            ..where((t) => t.id.equals(existing.first.id)))
+          .write(CharacterRelationsCompanion(label: Value(label)));
+    }
+  }
+
+  Future<void> deleteRelationBetween(int fromId, int toId) =>
+      (delete(characterRelations)
+            ..where((t) =>
+                t.fromEntryId.equals(fromId) & t.toEntryId.equals(toId)))
+          .go();
+
   /// 导入一本小说(条目用数组索引引用关系与父级),返回新小说 id
   Future<int> importNovel(
     String title,

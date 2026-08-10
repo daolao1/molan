@@ -25,6 +25,7 @@ String writingAgentSystem({
 - set_content:整体重写,仅当作者明确要求推翻重写时使用
 - read_outline / set_outline:读写本事件大纲;情节实际走向与大纲不符时主动同步大纲
 - upsert_entry:写作中产生的新设定(新人物/地点/物品等)或人物重大变化,及时记入设定库;同名合并、不存在则创建
+- upsert_relation:记录/更新两个人物间的定向关系(from→to+简短 label),人物间的情感与羳羁变化用它,不要堆进备注
 - get_entry_detail / list_entries / get_relations:检索小说设定,确保人物言行与设定一致
 
 作者选中机制:
