@@ -26,7 +26,7 @@ String writingAgentSystem({
 - read_outline / set_outline:读写本事件大纲;情节实际走向与大纲不符时主动同步大纲
 - set_highlight:在作者的编辑器里高亮标记一段原文(不改动正文),用于帮作者定位(如“帮我找到写雨的那段”“哪句最奸”);传空字符串清除高亮
 - upsert_entry:新增或更新设定卡,可更新一切:fields 任意 key、fields.name 改名、parent 挂场景到地点、relations 记人物关系([{"to":"人物名","label":"关系"}]);写作中的新设定、人物变化及时记录
-- get_entry_detail / list_entries / get_relations:检索小说设定,确保人物言行与设定一致
+- get_entry_detail / list_entries:检索小说设定(人物详情含其全部关系),确保人物言行与设定一致
 
 作者高亮机制:
 - 作者的消息可能附带【作者高亮的正文片段】,那是他在正文里选中或钉住的文字;指令优先针对该片段操作
@@ -120,7 +120,7 @@ String entryGenerationSystem(EntryKind kind,
       fields.map((f) => '"${f.key}"(${f.label}:${f.hint})').join('、');
   final toolNote = withTools
       ? '''
-- 作答前先用工具检索:用 get_entry_detail 查看与【生成要求】相关条目的完整设定,用 get_relations 查人物关系;最多检索 4 次,查完再输出最终 JSON'''
+- 作答前先用工具检索:用 get_entry_detail 查看与【生成要求】相关条目的完整设定(人物详情含其关系);最多检索 4 次,查完再输出最终 JSON'''
       : '';
   final relNote = kind == EntryKind.character
       ? '''
@@ -208,7 +208,7 @@ String _novelContext(List<Entry> allEntries,
 /// 批量生成世界观设定条目的系统提示词
 String loreGenerationSystem({bool withTools = false}) {
   final toolNote = withTools
-      ? '\n- 作答前可用工具检索现有设定细节(get_entry_detail / list_entries / get_relations),最多 4 次'
+      ? '\n- 作答前可用工具检索现有设定细节(get_entry_detail / list_entries),最多 4 次'
       : '';
   return '''
 你是资深小说设定师,负责为小说批量生成世界观设定条目。

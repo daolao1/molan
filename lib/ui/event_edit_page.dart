@@ -122,7 +122,6 @@ class _EventEditPageState extends State<EventEditPage>
     'upsert_entry': '更新设定',
     'get_entry_detail': '查阅设定',
     'list_entries': '列出条目',
-    'get_relations': '查人物关系',
   };
 
   PageSnapshot _ctxProvider() => PageSnapshot(

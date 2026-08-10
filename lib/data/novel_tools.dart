@@ -7,7 +7,7 @@ const novelToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'get_entry_detail',
-      'description': '获取某个设定条目(人物/地点/物品/场景)的完整详细内容',
+      'description': '获取某个设定条目的完整详细内容;人物会附带其全部人物关系,
       'parameters': {
         'type': 'object',
         'properties': {
@@ -34,19 +34,6 @@ const novelToolSchemas = [
       },
     },
   },
-  {
-    'type': 'function',
-    'function': {
-      'name': 'get_relations',
-      'description': '查询人物关系;给定人物名则只返回与其相关的关系,省略则返回全部',
-      'parameters': {
-        'type': 'object',
-        'properties': {
-          'name': {'type': 'string', 'description': '人物名称,可省略'}
-        },
-      },
-    },
-  },
 ];
 
 /// 执行工具调用,返回给模型的文本结果
@@ -62,8 +49,6 @@ class NovelToolExecutor {
         return _entryDetail(args['name'] as String? ?? '');
       case 'list_entries':
         return _listEntries(args['kind'] as String?);
-      case 'get_relations':
-        return _relations(args['name'] as String?);
       default:
         return '未知工具:$name';
     }
@@ -96,6 +81,19 @@ class NovelToolExecutor {
       final v = data[f.key]?.trim() ?? '';
       if (v.isNotEmpty) buf.writeln('${f.label}:$v');
     }
+    if (kind == EntryKind.character) {
+      final nameOf = {for (final x in all) x.id: x.name};
+      final rels = await db.relationsOfNovel(novelId);
+      final lines = [
+        for (final r in rels)
+          if (r.fromEntryId == e.id || r.toEntryId == e.id)
+            '${nameOf[r.fromEntryId]} →${r.label}→ ${nameOf[r.toEntryId]}'
+      ];
+      if (lines.isNotEmpty) {
+        buf.writeln('人物关系:');
+        lines.forEach(buf.writeln);
+      }
+    }
     return buf.toString().trimRight();
   }
 
@@ -113,19 +111,5 @@ class NovelToolExecutor {
       if (names.isNotEmpty) buf.writeln('${kind.label}:${names.join('、')}');
     }
     return buf.isEmpty ? '(暂无条目)' : buf.toString().trimRight();
-  }
-
-  Future<String> _relations(String? name) async {
-    final all = await db.allEntriesOf(novelId);
-    final nameOf = {for (final e in all) e.id: e.name};
-    final rels = await db.relationsOfNovel(novelId);
-    final lines = [
-      for (final r in rels)
-        if (name == null ||
-            nameOf[r.fromEntryId] == name ||
-            nameOf[r.toEntryId] == name)
-          '${nameOf[r.fromEntryId]} →${r.label}→ ${nameOf[r.toEntryId]}'
-    ];
-    return lines.isEmpty ? '(无相关关系)' : lines.join('\n');
   }
 }
