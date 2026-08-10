@@ -118,7 +118,6 @@ class _EventEditPageState extends State<EventEditPage>
     'read_outline': '读取大纲',
     'set_outline': '更新大纲',
     'upsert_entry': '更新设定',
-    'upsert_relation': '更新人物关系',
     'get_entry_detail': '查阅设定',
     'list_entries': '列出条目',
     'get_relations': '查人物关系',
@@ -438,38 +437,6 @@ class _EventEditPageState extends State<EventEditPage>
               });
               return null;
             };
-          case 'upsert_relation':
-            final fromName = args['from']?.toString().trim() ?? '';
-            final toName = args['to']?.toString().trim() ?? '';
-            // 捕获旧关系以便回退
-            String? oldLabel;
-            int? fromId, toId;
-            final chars = await widget.db.allEntriesOf(widget.novel.id);
-            for (final e in chars) {
-              if (e.kind == EntryKind.character.name) {
-                if (e.name == fromName) fromId = e.id;
-                if (e.name == toName) toId = e.id;
-              }
-            }
-            if (fromId != null && toId != null) {
-              for (final r
-                  in await widget.db.relationsOfNovel(widget.novel.id)) {
-                if (r.fromEntryId == fromId && r.toEntryId == toId) {
-                  oldLabel = r.label;
-                  break;
-                }
-              }
-            }
-            final fId = fromId, tId = toId, oldL = oldLabel;
-            revert = () async {
-              if (fId == null || tId == null) return '无法回退';
-              if (oldL == null) {
-                await widget.db.deleteRelationBetween(fId, tId);
-              } else {
-                await widget.db.upsertRelation(fId, tId, oldL);
-              }
-              return null;
-            };
           case 'upsert_entry':
             final kind =
                 EntryKind.values.asNameMap()[args['kind']?.toString()];
@@ -490,6 +457,14 @@ class _EventEditPageState extends State<EventEditPage>
               }
             }
             final beforeEntry = before;
+            // 旧关系快照:回退时连同恢复
+            final beforeRels = beforeEntry == null
+                ? const <({int toId, String label})>[]
+                : [
+                    for (final r
+                        in await widget.db.relationsFrom(beforeEntry.id))
+                      (toId: r.toEntryId, label: r.label)
+                  ];
             revert = () async {
               if (kind == null || nm.isEmpty) return '无法回退';
               Entry? cur;
@@ -504,6 +479,7 @@ class _EventEditPageState extends State<EventEditPage>
               } else if (cur != null) {
                 await widget.db.updateEntry(
                     cur.id, beforeEntry.name, beforeEntry.content);
+                await widget.db.replaceRelationsFrom(cur.id, beforeRels);
               }
               return null;
             };
@@ -930,9 +906,10 @@ class _EventEditPageState extends State<EventEditPage>
       'set_content' => '$label(${(args['text']?.toString() ?? '').length} 字)',
       'set_outline' => '$label “${s(args['text'])}”',
       'upsert_entry' =>
-        '$label「${args['name']}」(${args['fields'] is Map ? (args['fields'] as Map).keys.join('、') : ''})',
-      'upsert_relation' =>
-        '$label ${args['from']} →${args['label']}→ ${args['to']}',
+        '$label「${args['name']}」(${[
+          if (args['fields'] is Map) ...(args['fields'] as Map).keys,
+          if (args['relations'] is List) '关系×${(args['relations'] as List).length}',
+        ].join('、')})',
       'get_entry_detail' => '$label「${args['name']}」',
       _ => label,
     };
@@ -1028,6 +1005,13 @@ class _EventEditPageState extends State<EventEditPage>
         if (fields is Map) {
           widgets.add(block([
             for (final e in fields.entries) '${e.key}: ${e.value}'
+          ].join('\n')));
+        }
+        final rels = args['relations'];
+        if (rels is List && rels.isNotEmpty) {
+          widgets.add(block([
+            for (final r in rels)
+              if (r is Map) '→ ${r['label']} → ${r['to']}'
           ].join('\n')));
         }
       default:
@@ -1160,8 +1144,6 @@ class _EventEditPageState extends State<EventEditPage>
       'set_content' => '$label(${(args['text']?.toString() ?? '').length} 字)',
       'set_outline' => '$label “${s(args['text'])}”',
       'upsert_entry' => '$label「${args['name']}」',
-      'upsert_relation' =>
-        '$label ${args['from']} →${args['label']}→ ${args['to']}',
       _ => label,
     };
   }

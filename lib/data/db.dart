@@ -300,12 +300,6 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
-  Future<void> deleteRelationBetween(int fromId, int toId) =>
-      (delete(characterRelations)
-            ..where((t) =>
-                t.fromEntryId.equals(fromId) & t.toEntryId.equals(toId)))
-          .go();
-
   /// 导入一本小说(条目用数组索引引用关系与父级),返回新小说 id
   Future<int> importNovel(
     String title,

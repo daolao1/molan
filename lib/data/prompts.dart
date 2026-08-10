@@ -24,8 +24,7 @@ String writingAgentSystem({
 - append_text:在结尾续写
 - set_content:整体重写,仅当作者明确要求推翻重写时使用
 - read_outline / set_outline:读写本事件大纲;情节实际走向与大纲不符时主动同步大纲
-- upsert_entry:新增或更新设定卡,fields 可用任意 key(自定义字段也会保存),fields.name 可改名,parent 可挂场景到地点;写作中的新设定、人物变化及时记录
-- upsert_relation:记录/更新两个人物间的定向关系(from→to+简短 label),人物间的情感与羳羁变化用它,不要堆进备注
+- upsert_entry:新增或更新设定卡,可更新一切:fields 任意 key、fields.name 改名、parent 挂场景到地点、relations 记人物关系([{"to":"人物名","label":"关系"}]);写作中的新设定、人物变化及时记录
 - get_entry_detail / list_entries / get_relations:检索小说设定,确保人物言行与设定一致
 
 作者选中机制:

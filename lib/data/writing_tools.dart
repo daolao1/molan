@@ -98,24 +98,21 @@ const writingToolSchemas = [
             'type': 'string',
             'description': '仅场景可用:所属地点名(必须已存在)',
           },
+          'relations': {
+            'type': 'array',
+            'description':
+                '仅人物可用:与其他人物的定向关系 [{"to":"人物名","label":"关系 2~6 字"}],逐条新增或更新;to 必须已存在',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'to': {'type': 'string'},
+                'label': {'type': 'string'},
+              },
+              'required': ['to', 'label'],
+            },
+          },
         },
         'required': ['kind', 'name', 'fields'],
-      },
-    },
-  },
-  {
-    'type': 'function',
-    'function': {
-      'name': 'upsert_relation',
-      'description': '新增或更新两个人物间的定向关系(from → to);同对人物已有关系则更新描述',
-      'parameters': {
-        'type': 'object',
-        'properties': {
-          'from': {'type': 'string', 'description': '发起方人物名(必须已存在)'},
-          'to': {'type': 'string', 'description': '目标人物名(必须已存在)'},
-          'label': {'type': 'string', 'description': '关系描述,2~6 字,如:暗恋、师徒、宿敌'},
-        },
-        'required': ['from', 'to', 'label'],
       },
     },
   },
@@ -186,34 +183,9 @@ class WritingToolExecutor {
         return '已更新大纲';
       case 'upsert_entry':
         return _upsertEntry(args);
-      case 'upsert_relation':
-        return _upsertRelation(args);
       default:
         return lookup.call(name, args);
     }
-  }
-
-  Future<String> _upsertRelation(Map<String, dynamic> args) async {
-    final from = args['from']?.toString().trim() ?? '';
-    final to = args['to']?.toString().trim() ?? '';
-    final label = args['label']?.toString().trim() ?? '';
-    if (from.isEmpty || to.isEmpty || label.isEmpty) {
-      return '失败:from/to/label 不能为空';
-    }
-    final all = await db.allEntriesOf(novelId);
-    Entry? find(String name) {
-      for (final e in all) {
-        if (e.kind == EntryKind.character.name && e.name == name) return e;
-      }
-      return null;
-    }
-
-    final fromE = find(from);
-    final toE = find(to);
-    if (fromE == null) return '失败:未找到人物「$from」';
-    if (toE == null) return '失败:未找到人物「$to」';
-    await db.upsertRelation(fromE.id, toE.id, label);
-    return '已记录关系:$from →$label→ $to';
   }
 
   Future<String> _upsertEntry(Map<String, dynamic> args) async {
@@ -252,20 +224,54 @@ class WritingToolExecutor {
       }
     }
     if (target == null) {
-      await db.createEntry(
+      final id = await db.createEntry(
           novelId, kind, newName ?? name, encodeEntryContent(fields),
           parentId: parentId);
-      return '已创建${kind.label}「${newName ?? name}」';
+      final relNote = await _applyRelations(id, args['relations'], all);
+      return '已创建${kind.label}「${newName ?? name}」$relNote';
     }
     final merged = parseEntryContent(target.content)..addAll(fields);
     await db.updateEntry(
         target.id, newName ?? target.name, encodeEntryContent(merged),
         parentId: parentId);
+    final relNote = await _applyRelations(target.id, args['relations'], all);
     final parts = [
       if (fields.isNotEmpty) '字段:${fields.keys.join('、')}',
       if (newName != null) '改名为「$newName」',
       if (parentId != null) '所属地点:$parentName',
     ];
-    return '已更新${kind.label}「$name」(${parts.join(';')})';
+    return '已更新${kind.label}「$name」(${parts.join(';')})$relNote';
+  }
+
+  /// 逐条 upsert 人物关系;返回结果尾注
+  Future<String> _applyRelations(
+      int fromId, Object? raw, List<Entry> all) async {
+    if (raw is! List || raw.isEmpty) return '';
+    var ok = 0;
+    final missed = <String>[];
+    for (final r in raw) {
+      if (r is! Map) continue;
+      final to = r['to']?.toString().trim() ?? '';
+      final label = r['label']?.toString().trim() ?? '';
+      if (to.isEmpty || label.isEmpty) continue;
+      Entry? toE;
+      for (final e in all) {
+        if (e.kind == EntryKind.character.name && e.name == to) {
+          toE = e;
+          break;
+        }
+      }
+      if (toE == null) {
+        missed.add(to);
+        continue;
+      }
+      await db.upsertRelation(fromId, toE.id, label);
+      ok++;
+    }
+    final notes = [
+      if (ok > 0) '关系×$ok',
+      if (missed.isNotEmpty) '未找到人物:${missed.join('、')}',
+    ];
+    return notes.isEmpty ? '' : ';${notes.join(';')}';
   }
 }
