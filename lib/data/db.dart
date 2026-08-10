@@ -40,13 +40,16 @@ class CharacterRelations extends Table {
   TextColumn get label => text()();
 }
 
-/// 通用条目关联(设定 → 任意卡片)
+/// 通用条目关联(任意卡片 → 任意卡片,带描述)
 class EntryLinks extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get fromEntryId =>
       integer().references(Entries, #id, onDelete: KeyAction.cascade)();
   IntColumn get toEntryId =>
       integer().references(Entries, #id, onDelete: KeyAction.cascade)();
+
+  /// 关联描述,如“幼年在此学艺”
+  TextColumn get label => text().withDefault(const Constant(''))();
 }
 
 /// 章节:只有标题,内容由事件拼接
@@ -99,7 +102,7 @@ class AppDatabase extends _$AppDatabase {
             ));
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -113,6 +116,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 6) {
             await m.addColumn(chapterEvents, chapterEvents.chatLog);
+          }
+          if (from < 7) {
+            await m.addColumn(entryLinks, entryLinks.label);
           }
         },
         beforeOpen: (details) async {
@@ -177,6 +183,9 @@ class AppDatabase extends _$AppDatabase {
   Future<List<EntryLink>> linksFrom(int entryId) =>
       (select(entryLinks)..where((t) => t.fromEntryId.equals(entryId))).get();
 
+  Future<List<EntryLink>> linksTo(int entryId) =>
+      (select(entryLinks)..where((t) => t.toEntryId.equals(entryId))).get();
+
   Future<List<EntryLink>> linksOfNovel(int novelId) async {
     final q = select(entryLinks).join([
       innerJoin(entries, entries.id.equalsExp(entryLinks.fromEntryId))
@@ -186,16 +195,33 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// 重写某条目发起的全部关联
-  Future<void> replaceLinksFrom(int entryId, List<int> toIds) =>
+  Future<void> replaceLinksFrom(
+          int entryId, List<({int toId, String label})> links) =>
       transaction(() async {
         await (delete(entryLinks)
               ..where((t) => t.fromEntryId.equals(entryId)))
             .go();
-        for (final toId in toIds) {
+        for (final l in links) {
           await into(entryLinks).insert(EntryLinksCompanion.insert(
-              fromEntryId: entryId, toEntryId: toId));
+              fromEntryId: entryId,
+              toEntryId: l.toId,
+              label: Value(l.label)));
         }
       });
+
+  /// 新增一条关联;完全相同(from→to+label)的已存在则跳过(同对卡片可有多条不同描述)
+  Future<void> upsertLink(int fromId, int toId, String label) async {
+    final existing = await (select(entryLinks)
+          ..where((t) =>
+              t.fromEntryId.equals(fromId) &
+              t.toEntryId.equals(toId) &
+              t.label.equals(label)))
+        .get();
+    if (existing.isEmpty) {
+      await into(entryLinks).insert(EntryLinksCompanion.insert(
+          fromEntryId: fromId, toEntryId: toId, label: Value(label)));
+    }
+  }
 
   // ---- 章节与事件 ----
   Stream<List<Chapter>> watchChapters(int novelId) => (select(chapters)
@@ -306,7 +332,7 @@ class AppDatabase extends _$AppDatabase {
     String description,
     List<({String kind, String name, String content, int? parent})> entryRows,
     List<({int from, int to, String label})> relRows,
-    List<({int from, int to})> linkRows,
+    List<({int from, int to, String label})> linkRows,
     List<({String title, List<({String outline, String content})> events})>
         chapterRows,
   ) =>
@@ -341,7 +367,9 @@ class AppDatabase extends _$AppDatabase {
           if (l.from < 0 || l.from >= ids.length) continue;
           if (l.to < 0 || l.to >= ids.length) continue;
           await into(entryLinks).insert(EntryLinksCompanion.insert(
-              fromEntryId: ids[l.from], toEntryId: ids[l.to]));
+              fromEntryId: ids[l.from],
+              toEntryId: ids[l.to],
+              label: Value(l.label)));
         }
         for (final c in chapterRows) {
           final chapterId = await createChapter(novelId, c.title);

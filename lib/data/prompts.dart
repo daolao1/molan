@@ -25,7 +25,7 @@ String writingAgentSystem({
 - set_content:整体重写,仅当作者明确要求推翻重写时使用
 - read_outline / set_outline:读写本事件大纲;情节实际走向与大纲不符时主动同步大纲
 - set_highlight:在作者的编辑器里高亮标记一段原文(不改动正文),用于帮作者定位(如“帮我找到写雨的那段”“哪句最奸”);传空字符串清除高亮
-- upsert_entry:新增或更新设定卡,可更新一切:fields 任意 key、fields.name 改名、parent 挂场景到地点、relations 记人物关系([{"to":"人物名","label":"关系"}]);写作中的新设定、人物变化及时记录
+- upsert_entry:新增或更新设定卡,可更新一切:fields 任意 key、fields.name 改名、parent 挂场景到地点、relations 记人物间关系、links 记本卡片→其他卡片的定向关联(带描述、同对可多条,如人物→地点“幼年在此学艺”);写作中的新设定、人物变化及时记录
 - get_entry_detail / list_entries:检索小说设定(人物详情含其全部关系),确保人物言行与设定一致
 
 作者高亮机制:
@@ -170,7 +170,12 @@ String _novelContext(List<Entry> allEntries,
   final linksOf = <int, List<String>>{};
   for (final l in links) {
     final to = nameOf[l.toEntryId];
-    if (to != null) (linksOf[l.fromEntryId] ??= []).add(to);
+    if (to == null) continue;
+    final label = l.label.trim();
+    final brief = label.isEmpty
+        ? to
+        : '$to(${label.length <= 15 ? label : '${label.substring(0, 15)}…'})';
+    (linksOf[l.fromEntryId] ??= []).add(brief);
   }
   for (final kind in EntryKind.values) {
     final list = [

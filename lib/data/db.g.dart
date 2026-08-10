@@ -1208,8 +1208,18 @@ class $EntryLinksTable extends EntryLinks
       'REFERENCES entries (id) ON DELETE CASCADE',
     ),
   );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
   @override
-  List<GeneratedColumn> get $columns => [id, fromEntryId, toEntryId];
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, fromEntryId, toEntryId, label];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1244,6 +1254,12 @@ class $EntryLinksTable extends EntryLinks
     } else if (isInserting) {
       context.missing(_toEntryIdMeta);
     }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
+    }
     return context;
   }
 
@@ -1265,6 +1281,10 @@ class $EntryLinksTable extends EntryLinks
         DriftSqlType.int,
         data['${effectivePrefix}to_entry_id'],
       )!,
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      )!,
     );
   }
 
@@ -1278,10 +1298,14 @@ class EntryLink extends DataClass implements Insertable<EntryLink> {
   final int id;
   final int fromEntryId;
   final int toEntryId;
+
+  /// 关联描述,如“幼年在此学艺”
+  final String label;
   const EntryLink({
     required this.id,
     required this.fromEntryId,
     required this.toEntryId,
+    required this.label,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1289,6 +1313,7 @@ class EntryLink extends DataClass implements Insertable<EntryLink> {
     map['id'] = Variable<int>(id);
     map['from_entry_id'] = Variable<int>(fromEntryId);
     map['to_entry_id'] = Variable<int>(toEntryId);
+    map['label'] = Variable<String>(label);
     return map;
   }
 
@@ -1297,6 +1322,7 @@ class EntryLink extends DataClass implements Insertable<EntryLink> {
       id: Value(id),
       fromEntryId: Value(fromEntryId),
       toEntryId: Value(toEntryId),
+      label: Value(label),
     );
   }
 
@@ -1309,6 +1335,7 @@ class EntryLink extends DataClass implements Insertable<EntryLink> {
       id: serializer.fromJson<int>(json['id']),
       fromEntryId: serializer.fromJson<int>(json['fromEntryId']),
       toEntryId: serializer.fromJson<int>(json['toEntryId']),
+      label: serializer.fromJson<String>(json['label']),
     );
   }
   @override
@@ -1318,13 +1345,20 @@ class EntryLink extends DataClass implements Insertable<EntryLink> {
       'id': serializer.toJson<int>(id),
       'fromEntryId': serializer.toJson<int>(fromEntryId),
       'toEntryId': serializer.toJson<int>(toEntryId),
+      'label': serializer.toJson<String>(label),
     };
   }
 
-  EntryLink copyWith({int? id, int? fromEntryId, int? toEntryId}) => EntryLink(
+  EntryLink copyWith({
+    int? id,
+    int? fromEntryId,
+    int? toEntryId,
+    String? label,
+  }) => EntryLink(
     id: id ?? this.id,
     fromEntryId: fromEntryId ?? this.fromEntryId,
     toEntryId: toEntryId ?? this.toEntryId,
+    label: label ?? this.label,
   );
   EntryLink copyWithCompanion(EntryLinksCompanion data) {
     return EntryLink(
@@ -1333,6 +1367,7 @@ class EntryLink extends DataClass implements Insertable<EntryLink> {
           ? data.fromEntryId.value
           : this.fromEntryId,
       toEntryId: data.toEntryId.present ? data.toEntryId.value : this.toEntryId,
+      label: data.label.present ? data.label.value : this.label,
     );
   }
 
@@ -1341,46 +1376,53 @@ class EntryLink extends DataClass implements Insertable<EntryLink> {
     return (StringBuffer('EntryLink(')
           ..write('id: $id, ')
           ..write('fromEntryId: $fromEntryId, ')
-          ..write('toEntryId: $toEntryId')
+          ..write('toEntryId: $toEntryId, ')
+          ..write('label: $label')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, fromEntryId, toEntryId);
+  int get hashCode => Object.hash(id, fromEntryId, toEntryId, label);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is EntryLink &&
           other.id == this.id &&
           other.fromEntryId == this.fromEntryId &&
-          other.toEntryId == this.toEntryId);
+          other.toEntryId == this.toEntryId &&
+          other.label == this.label);
 }
 
 class EntryLinksCompanion extends UpdateCompanion<EntryLink> {
   final Value<int> id;
   final Value<int> fromEntryId;
   final Value<int> toEntryId;
+  final Value<String> label;
   const EntryLinksCompanion({
     this.id = const Value.absent(),
     this.fromEntryId = const Value.absent(),
     this.toEntryId = const Value.absent(),
+    this.label = const Value.absent(),
   });
   EntryLinksCompanion.insert({
     this.id = const Value.absent(),
     required int fromEntryId,
     required int toEntryId,
+    this.label = const Value.absent(),
   }) : fromEntryId = Value(fromEntryId),
        toEntryId = Value(toEntryId);
   static Insertable<EntryLink> custom({
     Expression<int>? id,
     Expression<int>? fromEntryId,
     Expression<int>? toEntryId,
+    Expression<String>? label,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (fromEntryId != null) 'from_entry_id': fromEntryId,
       if (toEntryId != null) 'to_entry_id': toEntryId,
+      if (label != null) 'label': label,
     });
   }
 
@@ -1388,11 +1430,13 @@ class EntryLinksCompanion extends UpdateCompanion<EntryLink> {
     Value<int>? id,
     Value<int>? fromEntryId,
     Value<int>? toEntryId,
+    Value<String>? label,
   }) {
     return EntryLinksCompanion(
       id: id ?? this.id,
       fromEntryId: fromEntryId ?? this.fromEntryId,
       toEntryId: toEntryId ?? this.toEntryId,
+      label: label ?? this.label,
     );
   }
 
@@ -1408,6 +1452,9 @@ class EntryLinksCompanion extends UpdateCompanion<EntryLink> {
     if (toEntryId.present) {
       map['to_entry_id'] = Variable<int>(toEntryId.value);
     }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
+    }
     return map;
   }
 
@@ -1416,7 +1463,8 @@ class EntryLinksCompanion extends UpdateCompanion<EntryLink> {
     return (StringBuffer('EntryLinksCompanion(')
           ..write('id: $id, ')
           ..write('fromEntryId: $fromEntryId, ')
-          ..write('toEntryId: $toEntryId')
+          ..write('toEntryId: $toEntryId, ')
+          ..write('label: $label')
           ..write(')'))
         .toString();
   }
@@ -3528,12 +3576,14 @@ typedef $$EntryLinksTableCreateCompanionBuilder =
       Value<int> id,
       required int fromEntryId,
       required int toEntryId,
+      Value<String> label,
     });
 typedef $$EntryLinksTableUpdateCompanionBuilder =
     EntryLinksCompanion Function({
       Value<int> id,
       Value<int> fromEntryId,
       Value<int> toEntryId,
+      Value<String> label,
     });
 
 final class $$EntryLinksTableReferences
@@ -3586,6 +3636,11 @@ class $$EntryLinksTableFilterComposer
   });
   ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3650,6 +3705,11 @@ class $$EntryLinksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$EntriesTableOrderingComposer get fromEntryId {
     final $$EntriesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -3708,6 +3768,9 @@ class $$EntryLinksTableAnnotationComposer
   });
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
 
   $$EntriesTableAnnotationComposer get fromEntryId {
     final $$EntriesTableAnnotationComposer composer = $composerBuilder(
@@ -3787,20 +3850,24 @@ class $$EntryLinksTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<int> fromEntryId = const Value.absent(),
                 Value<int> toEntryId = const Value.absent(),
+                Value<String> label = const Value.absent(),
               }) => EntryLinksCompanion(
                 id: id,
                 fromEntryId: fromEntryId,
                 toEntryId: toEntryId,
+                label: label,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required int fromEntryId,
                 required int toEntryId,
+                Value<String> label = const Value.absent(),
               }) => EntryLinksCompanion.insert(
                 id: id,
                 fromEntryId: fromEntryId,
                 toEntryId: toEntryId,
+                label: label,
               ),
           withReferenceMapper: (p0) => p0
               .map(

@@ -166,11 +166,11 @@ class _NovelPageState extends State<NovelPage>
               EntryKind.lore, name, encodeEntryContent({'detail': detail}));
           final related = m['related'];
           if (related is List) {
-            final toIds = <int>[];
+            final toIds = <({int toId, String label})>[];
             for (final r in related) {
               final target = nameToId[r?.toString().trim()];
-              if (target != null && !toIds.contains(target)) {
-                toIds.add(target);
+              if (target != null && !toIds.any((x) => x.toId == target)) {
+                toIds.add((toId: target, label: ''));
                 linked++;
               }
             }

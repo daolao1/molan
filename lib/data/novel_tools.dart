@@ -71,11 +71,25 @@ class NovelToolExecutor {
     }
     final links = await db.linksFrom(e.id);
     if (links.isNotEmpty) {
-      final names = [
-        for (final l in links)
-          all.where((x) => x.id == l.toEntryId).firstOrNull?.name
-      ].whereType<String>().toList();
-      if (names.isNotEmpty) buf.writeln('关联卡片:${names.join('、')}');
+      buf.writeln('关联卡片:');
+      for (final l in links) {
+        final to = all.where((x) => x.id == l.toEntryId).firstOrNull;
+        if (to != null) {
+          buf.writeln(
+              '- ${to.name}${l.label.isEmpty ? '' : ':${l.label}'}');
+        }
+      }
+    }
+    final incoming = await db.linksTo(e.id);
+    if (incoming.isNotEmpty) {
+      buf.writeln('被关联:');
+      for (final l in incoming) {
+        final from = all.where((x) => x.id == l.fromEntryId).firstOrNull;
+        if (from != null) {
+          buf.writeln(
+              '- ${from.name}${l.label.isEmpty ? '' : ':${l.label}'}');
+        }
+      }
     }
     for (final f in entryFieldsFor(kind)) {
       final v = data[f.key]?.trim() ?? '';

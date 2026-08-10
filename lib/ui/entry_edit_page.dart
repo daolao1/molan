@@ -56,9 +56,10 @@ class _EntryEditPageState extends State<EntryEditPage> {
   final List<({int toId, String label})> _relations = [];
   List<CharacterRelation> _incoming = const [];
 
-  // 设定关联(仅 lore):内存暂存,保存时同步入库
+  // 通用关联(所有类型):内存暂存,保存时同步入库
   List<Entry> _allEntries = const [];
-  final List<int> _links = [];
+  final List<({int toId, String label})> _links = [];
+  List<EntryLink> _incomingLinks = const [];
 
   @override
   void initState() {
@@ -73,7 +74,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
         e.key: TextEditingController(text: e.value)
     };
     if (widget.kind == EntryKind.character) _loadRelations();
-    if (widget.kind == EntryKind.lore) _loadLinks();
+    _loadLinks();
     AppContextRegistry.push(_ctxProvider);
   }
 
@@ -92,12 +93,16 @@ class _EntryEditPageState extends State<EntryEditPage> {
     final links = widget.entry == null
         ? <EntryLink>[]
         : await widget.db.linksFrom(widget.entry!.id);
+    final incoming = widget.entry == null
+        ? <EntryLink>[]
+        : await widget.db.linksTo(widget.entry!.id);
     if (!mounted) return;
     setState(() {
       _allEntries = all;
+      _incomingLinks = incoming;
       _links
         ..clear()
-        ..addAll([for (final l in links) l.toEntryId]);
+        ..addAll([for (final l in links) (toId: l.toEntryId, label: l.label)]);
     });
   }
 
@@ -108,34 +113,66 @@ class _EntryEditPageState extends State<EntryEditPage> {
     return null;
   }
 
-  Future<void> _addLink() async {
+  /// 进入关联卡片的编辑页;返回后刷新关联与名字
+  Future<void> _openEntry(Entry e) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EntryEditPage(
+          db: widget.db,
+          novel: widget.novel,
+          kind: EntryKind.values.byName(e.kind),
+          entry: e,
+        ),
+      ),
+    );
+    if (mounted) _loadLinks();
+  }
+
+  /// index 为 null 时新增,否则编辑第 index 条关联;同一卡片可有多条
+  Future<void> _editLink({int? index}) async {
+    final editing = index != null ? _links[index] : null;
     final candidates = [
       for (final e in _allEntries)
-        if (e.id != widget.entry?.id && !_links.contains(e.id)) e
+        if (e.id != widget.entry?.id) e
     ];
     if (candidates.isEmpty) {
-      _toast('没有可关联的卡片了', error: true);
+      _toast('没有可关联的卡片', error: true);
       return;
     }
-    var targetId = candidates.first.id;
+    var targetId = editing?.toId ?? candidates.first.id;
+    final labelCtrl = TextEditingController(text: editing?.label ?? '');
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('关联卡片'),
-        content: DropdownButtonFormField<int>(
-          initialValue: targetId,
-          isExpanded: true,
-          decoration: const InputDecoration(
-              labelText: '选择卡片', border: OutlineInputBorder()),
-          items: [
-            for (final e in candidates)
-              DropdownMenuItem(
-                  value: e.id,
-                  child: Text(
-                      '[${EntryKind.values.byName(e.kind).label}] ${e.name}',
-                      overflow: TextOverflow.ellipsis)),
+        title: Text(editing == null ? '关联卡片' : '编辑关联'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<int>(
+              initialValue: targetId,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                  labelText: '选择卡片', border: OutlineInputBorder()),
+              items: [
+                for (final e in candidates)
+                  DropdownMenuItem(
+                      value: e.id,
+                      child: Text(
+                          '[${EntryKind.values.byName(e.kind).label}] ${e.name}',
+                          overflow: TextOverflow.ellipsis)),
+              ],
+              onChanged: (v) => targetId = v ?? targetId,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: labelCtrl,
+              decoration: const InputDecoration(
+                  labelText: '关联描述(可选)',
+                  hintText: '幼年在此学艺 / 随身佩带 / 每晚必到…',
+                  border: OutlineInputBorder()),
+            ),
           ],
-          onChanged: (v) => targetId = v ?? targetId,
         ),
         actions: [
           TextButton(
@@ -143,13 +180,18 @@ class _EntryEditPageState extends State<EntryEditPage> {
               child: const Text('取消')),
           FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('关联')),
+              child: Text(editing == null ? '关联' : '保存')),
         ],
       ),
     );
     if (ok == true) {
       setState(() {
-        _links.add(targetId);
+        final item = (toId: targetId, label: labelCtrl.text.trim());
+        if (index != null) {
+          _links[index] = item;
+        } else {
+          _links.add(item);
+        }
         _dirty = true;
       });
     }
@@ -295,8 +337,8 @@ class _EntryEditPageState extends State<EntryEditPage> {
             if (name.isEmpty) continue;
             for (final e in _allEntries) {
               if (e.name == name && e.id != widget.entry?.id) {
-                if (!_links.contains(e.id)) {
-                  _links.add(e.id);
+                if (!_links.any((l) => l.toId == e.id)) {
+                  _links.add((toId: e.id, label: ''));
                   addedRels++;
                 }
                 break;
@@ -546,9 +588,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
     if (widget.kind == EntryKind.character) {
       await widget.db.replaceRelationsFrom(entryId, _relations);
     }
-    if (widget.kind == EntryKind.lore) {
-      await widget.db.replaceLinksFrom(entryId, _links);
-    }
+    await widget.db.replaceLinksFrom(entryId, _links);
     if (mounted) Navigator.pop(context);
   }
 
@@ -920,56 +960,79 @@ class _EntryEditPageState extends State<EntryEditPage> {
                 ),
               ),
             ],
-            if (widget.kind == EntryKind.lore) ...[
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text('关联卡片',
-                                style:
-                                    Theme.of(context).textTheme.titleSmall),
-                          ),
-                          TextButton.icon(
-                            onPressed: _addLink,
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('添加'),
-                          ),
-                        ],
-                      ),
-                      if (_links.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Text('可关联人物、地点、物品、场景或其他设定'),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('关联卡片',
+                              style:
+                                  Theme.of(context).textTheme.titleSmall),
                         ),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          for (final id in _links)
-                            if (_entryById(id) case final e?)
-                              InputChip(
-                                avatar: Icon(
-                                    EntryKind.values.byName(e.kind).icon,
-                                    size: 16),
-                                label: Text(e.name),
-                                onDeleted: () => setState(() {
-                                  _links.remove(id);
+                        TextButton.icon(
+                          onPressed: () => _editLink(),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('添加'),
+                        ),
+                      ],
+                    ),
+                    if (_links.isEmpty && _incomingLinks.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text('可关联人物、地点、物品、场景或设定,并写上关联描述'),
+                      ),
+                    for (final (i, l) in _links.indexed)
+                      if (_entryById(l.toId) case final e?)
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.arrow_forward, size: 18),
+                          title: Text(
+                              '→ [${EntryKind.values.byName(e.kind).label}] ${e.name}'),
+                          subtitle:
+                              l.label.isEmpty ? null : Text(l.label),
+                          onTap: () => _openEntry(e),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined,
+                                    size: 20),
+                                tooltip: '编辑描述',
+                                onPressed: () => _editLink(index: i),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline,
+                                    size: 20),
+                                tooltip: '删除',
+                                onPressed: () => setState(() {
+                                  _links.removeAt(i);
                                   _dirty = true;
                                 }),
                               ),
-                        ],
-                      ),
-                    ],
-                  ),
+                            ],
+                          ),
+                        ),
+                    for (final l in _incomingLinks)
+                      if (_entryById(l.fromEntryId) case final e?)
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.arrow_back, size: 18),
+                          title: Text(
+                              '← [${EntryKind.values.byName(e.kind).label}] ${e.name}${l.label.isEmpty ? '' : ':${l.label}'}'),
+                          subtitle: const Text('由对方关联,在对方卡片中管理'),
+                          onTap: () => _openEntry(e),
+                        ),
+                  ],
                 ),
               ),
-            ],
+            ),
             const SizedBox(height: 24),
           ],
         ),

@@ -516,13 +516,19 @@ class _EventEditPageState extends State<EventEditPage>
               }
             }
             final beforeEntry = before;
-            // 旧关系快照:回退时连同恢复
+            // 旧关系/关联快照:回退时连同恢复
             final beforeRels = beforeEntry == null
                 ? const <({int toId, String label})>[]
                 : [
                     for (final r
                         in await widget.db.relationsFrom(beforeEntry.id))
                       (toId: r.toEntryId, label: r.label)
+                  ];
+            final beforeLinks = beforeEntry == null
+                ? const <({int toId, String label})>[]
+                : [
+                    for (final l in await widget.db.linksFrom(beforeEntry.id))
+                      (toId: l.toEntryId, label: l.label)
                   ];
             revert = () async {
               if (kind == null || nm.isEmpty) return '无法回退';
@@ -539,6 +545,7 @@ class _EventEditPageState extends State<EventEditPage>
                 await widget.db.updateEntry(
                     cur.id, beforeEntry.name, beforeEntry.content);
                 await widget.db.replaceRelationsFrom(cur.id, beforeRels);
+                await widget.db.replaceLinksFrom(cur.id, beforeLinks);
               }
               return null;
             };
@@ -1065,6 +1072,7 @@ class _EventEditPageState extends State<EventEditPage>
         '$label「${args['name']}」(${[
           if (args['fields'] is Map) ...(args['fields'] as Map).keys,
           if (args['relations'] is List) '关系×${(args['relations'] as List).length}',
+          if (args['links'] is List) '关联×${(args['links'] as List).length}',
         ].join('、')})',
       'get_entry_detail' => '$label「${args['name']}」',
       _ => label,
@@ -1168,6 +1176,13 @@ class _EventEditPageState extends State<EventEditPage>
           widgets.add(block([
             for (final r in rels)
               if (r is Map) '→ ${r['label']} → ${r['to']}'
+          ].join('\n')));
+        }
+        final lks = args['links'];
+        if (lks is List && lks.isNotEmpty) {
+          widgets.add(block([
+            for (final r in lks)
+              if (r is Map) '↔ ${r['to']}${(r['label']?.toString() ?? '').isEmpty ? '' : ':${r['label']}'}'
           ].join('\n')));
         }
       default:

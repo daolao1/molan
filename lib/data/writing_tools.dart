@@ -129,6 +129,19 @@ const writingToolSchemas = [
               'required': ['to', 'label'],
             },
           },
+          'links': {
+            'type': 'array',
+            'description':
+                '从本卡片指向其他卡片的定向关联 [{"to":"卡片名","label":"关联描述"}];同一对卡片可有多条不同描述的关联;to 必须已存在(人物/地点/物品/场景/设定均可)',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'to': {'type': 'string'},
+                'label': {'type': 'string'},
+              },
+              'required': ['to', 'label'],
+            },
+          },
         },
         'required': ['kind', 'name', 'fields'],
       },
@@ -271,19 +284,52 @@ class WritingToolExecutor {
           novelId, kind, newName ?? name, encodeEntryContent(fields),
           parentId: parentId);
       final relNote = await _applyRelations(id, args['relations'], all);
-      return '已创建${kind.label}「${newName ?? name}」$relNote';
+      final linkNote = await _applyLinks(id, args['links'], all);
+      return '已创建${kind.label}「${newName ?? name}」$relNote$linkNote';
     }
     final merged = parseEntryContent(target.content)..addAll(fields);
     await db.updateEntry(
         target.id, newName ?? target.name, encodeEntryContent(merged),
         parentId: parentId);
     final relNote = await _applyRelations(target.id, args['relations'], all);
+    final linkNote = await _applyLinks(target.id, args['links'], all);
     final parts = [
       if (fields.isNotEmpty) '字段:${fields.keys.join('、')}',
       if (newName != null) '改名为「$newName」',
       if (parentId != null) '所属地点:$parentName',
     ];
-    return '已更新${kind.label}「$name」(${parts.join(';')})$relNote';
+    return '已更新${kind.label}「$name」(${parts.join(';')})$relNote$linkNote';
+  }
+
+  /// 逐条 upsert 通用关联;返回结果尾注
+  Future<String> _applyLinks(int fromId, Object? raw, List<Entry> all) async {
+    if (raw is! List || raw.isEmpty) return '';
+    var ok = 0;
+    final missed = <String>[];
+    for (final r in raw) {
+      if (r is! Map) continue;
+      final to = r['to']?.toString().trim() ?? '';
+      final label = r['label']?.toString().trim() ?? '';
+      if (to.isEmpty) continue;
+      Entry? toE;
+      for (final e in all) {
+        if (e.name == to && e.id != fromId) {
+          toE = e;
+          break;
+        }
+      }
+      if (toE == null) {
+        missed.add(to);
+        continue;
+      }
+      await db.upsertLink(fromId, toE.id, label);
+      ok++;
+    }
+    final notes = [
+      if (ok > 0) '关联×$ok',
+      if (missed.isNotEmpty) '未找到卡片:${missed.join('、')}',
+    ];
+    return notes.isEmpty ? '' : ';${notes.join(';')}';
   }
 
   /// 逐条 upsert 人物关系;返回结果尾注

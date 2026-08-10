@@ -55,7 +55,11 @@ class NovelTransfer {
         for (final l in links)
           if (indexOf.containsKey(l.fromEntryId) &&
               indexOf.containsKey(l.toEntryId))
-            {'from': indexOf[l.fromEntryId], 'to': indexOf[l.toEntryId]}
+            {
+              'from': indexOf[l.fromEntryId],
+              'to': indexOf[l.toEntryId],
+              'label': l.label,
+            }
       ],
       'chapters': chapterData,
     });
@@ -111,7 +115,11 @@ class NovelTransfer {
     final linkRows = [
       for (final l in (data['links'] as List? ?? []))
         if (l is Map && l['from'] is int && l['to'] is int)
-          (from: l['from'] as int, to: l['to'] as int)
+          (
+            from: l['from'] as int,
+            to: l['to'] as int,
+            label: l['label'] as String? ?? '',
+          )
     ];
     final chapterRows = [
       for (final c in (data['chapters'] as List? ?? []))
