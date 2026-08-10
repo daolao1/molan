@@ -44,7 +44,7 @@ class _ChatMsg {
         isChange = true,
         isTool = false;
 
-  _ChatMsg.tool(this.text)
+  _ChatMsg.tool(this.text, {this.toolName, this.toolArgs, this.toolResult})
       : isUser = false,
         isChange = false,
         isTool = true,
@@ -54,6 +54,12 @@ class _ChatMsg {
   String text;
   final bool isChange;
   final bool isTool;
+
+  /// 工具调用详情(展开查看)
+  String? toolName;
+  Map<String, dynamic>? toolArgs;
+  String? toolResult;
+  bool expanded = false;
 
   /// 本轮改动前的快照(拒绝时恢复)
   final ({String outline, String content})? snapshot;
@@ -139,7 +145,14 @@ class _EventEditPageState extends State<EventEditPage>
             case 'ai':
               _chatUi.add(_ChatMsg(false, text));
             case 'tool':
-              _chatUi.add(_ChatMsg.tool(text));
+              _chatUi.add(_ChatMsg.tool(
+                text,
+                toolName: m['name']?.toString(),
+                toolArgs: m['args'] is Map
+                    ? (m['args'] as Map).cast<String, dynamic>()
+                    : null,
+                toolResult: m['result']?.toString(),
+              ));
             case 'change':
               _chatUi.add(_ChatMsg.change(text, null)
                 ..reviewed = m['reviewed'] is bool ? m['reviewed'] as bool : true);
@@ -165,6 +178,9 @@ class _EventEditPageState extends State<EventEditPage>
                           : 'ai',
               'text': m.text,
               if (m.isChange) 'reviewed': m.reviewed ?? true,
+              if (m.isTool && m.toolName != null) 'name': m.toolName,
+              if (m.isTool && m.toolArgs != null) 'args': m.toolArgs,
+              if (m.isTool && m.toolResult != null) 'result': m.toolResult,
             }
         ],
       });
@@ -345,17 +361,13 @@ class _EventEditPageState extends State<EventEditPage>
         novelId: widget.novel.id,
         lookup: NovelToolExecutor(widget.db, widget.novel.id),
       );
-      // 工具调用过程在对话流中可见
+      // 工具调用过程在对话流中可见(带参数详情)
       Future<String> loggedCall(String name, Map<String, dynamic> args) async {
-        final label = _toolLabels[name] ?? name;
-        final log = _ChatMsg.tool('⚙ $label…');
+        final log = _ChatMsg.tool('', toolName: name, toolArgs: args);
         if (mounted) setState(() => _chatUi.add(log));
         _scrollChat();
         final result = await executor.call(name, args);
-        if (mounted) {
-          setState(() => log.text =
-              '⚙ $label:${result.length > 60 ? '${result.substring(0, 60)}…' : result}');
-        }
+        if (mounted) setState(() => log.toolResult = result);
         return result;
       }
 
@@ -736,6 +748,141 @@ class _EventEditPageState extends State<EventEditPage>
     );
   }
 
+  /// 工具调用卡:摘要行(参数可见)+点击展开完整详情/diff
+  Widget _toolCard(BuildContext context, _ChatMsg m) {
+    final scheme = Theme.of(context).colorScheme;
+    // 旧格式(仅文本)兼容显示
+    if (m.toolName == null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Text(m.text,
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: scheme.outline)),
+      );
+    }
+    final name = m.toolName!;
+    final args = m.toolArgs ?? const {};
+    final result = m.toolResult;
+    final running = result == null;
+    final failed = result?.startsWith('失败') ?? false;
+    final label = _toolLabels[name] ?? name;
+    String s(Object? v, [int max = 24]) {
+      final t = v?.toString().replaceAll('\n', ' ') ?? '';
+      return t.length <= max ? t : '${t.substring(0, max)}…';
+    }
+
+    final summary = switch (name) {
+      'replace_text' => '$label “${s(args['old_text'])}” → “${s(args['new_text'])}”',
+      'append_text' => '$label +${(args['text']?.toString() ?? '').length} 字',
+      'set_content' => '$label(${(args['text']?.toString() ?? '').length} 字)',
+      'set_outline' => '$label “${s(args['text'])}”',
+      'upsert_entry' =>
+        '$label「${args['name']}」(${args['fields'] is Map ? (args['fields'] as Map).keys.join('、') : ''})',
+      'get_entry_detail' => '$label「${args['name']}」',
+      _ => label,
+    };
+    final status = running
+        ? '…'
+        : failed
+            ? ' ✗'
+            : '';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => setState(() => m.expanded = !m.expanded),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: failed
+                ? scheme.errorContainer.withValues(alpha: 0.35)
+                : scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                      running
+                          ? Icons.hourglass_top
+                          : failed
+                              ? Icons.error_outline
+                              : Icons.build_circle_outlined,
+                      size: 14,
+                      color: failed ? scheme.error : scheme.outline),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text('$summary$status',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: failed ? scheme.error : scheme.outline)),
+                  ),
+                  Icon(m.expanded ? Icons.expand_less : Icons.expand_more,
+                      size: 14, color: scheme.outline),
+                ],
+              ),
+              if (m.expanded) ...[
+                const SizedBox(height: 6),
+                ..._toolDetail(context, name, args, result),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _toolDetail(BuildContext context, String name,
+      Map<String, dynamic> args, String? result) {
+    final scheme = Theme.of(context).colorScheme;
+    Widget block(String text, {Color? bg, Color? fg}) => Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+              color: bg ?? scheme.surface,
+              borderRadius: BorderRadius.circular(4)),
+          child: SelectableText(text,
+              style: TextStyle(fontSize: 12, height: 1.5, color: fg)),
+        );
+    final widgets = <Widget>[];
+    switch (name) {
+      case 'replace_text':
+        widgets.add(block('- ${args['old_text'] ?? ''}',
+            bg: Colors.red.withValues(alpha: 0.08), fg: Colors.red.shade700));
+        widgets.add(block('+ ${args['new_text'] ?? ''}',
+            bg: Colors.green.withValues(alpha: 0.08),
+            fg: Colors.green.shade700));
+      case 'append_text':
+      case 'set_content':
+      case 'set_outline':
+        widgets.add(block('+ ${args['text'] ?? ''}',
+            bg: Colors.green.withValues(alpha: 0.08),
+            fg: Colors.green.shade700));
+      case 'upsert_entry':
+        final fields = args['fields'];
+        if (fields is Map) {
+          widgets.add(block([
+            for (final e in fields.entries) '${e.key}: ${e.value}'
+          ].join('\n')));
+        }
+      default:
+        if (args.isNotEmpty) {
+          widgets.add(block(
+              [for (final e in args.entries) '${e.key}: ${e.value}'].join('\n')));
+        }
+    }
+    if (result != null) {
+      widgets.add(block('结果:$result',
+          fg: result.startsWith('失败') ? scheme.error : scheme.outline));
+    }
+    return widgets;
+  }
+
   Widget _chatTab(BuildContext context) {
     return Column(
       children: [
@@ -756,20 +903,7 @@ class _EventEditPageState extends State<EventEditPage>
                   itemBuilder: (context, i) {
                     final m = _chatUi[i];
                     if (m.isChange) return _changeCard(context, m);
-                    if (m.isTool) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Text(
-                          m.text,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(
-                                  color:
-                                      Theme.of(context).colorScheme.outline),
-                        ),
-                      );
-                    }
+                    if (m.isTool) return _toolCard(context, m);
                     return Align(
                       alignment: m.isUser
                           ? Alignment.centerRight
