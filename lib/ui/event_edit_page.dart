@@ -151,9 +151,24 @@ class _EventEditPageState extends State<EventEditPage> {
   Future<void> _send() async {
     final text = _chatCtrl.text.trim();
     if (text.isEmpty || _busy) return;
+    // 正文选区随消息附给 agent(发送瞬间快照)
+    var fullText = text;
+    var uiText = text;
+    final sel = _contentCtrl.selection;
+    if (sel.isValid && !sel.isCollapsed) {
+      final selected = sel.textInside(_contentCtrl.text);
+      if (selected.trim().isNotEmpty) {
+        final before = _contentCtrl.text.substring(0, sel.start);
+        final startLine = '\n'.allMatches(before).length + 1;
+        final endLine = startLine + '\n'.allMatches(selected).length;
+        final range = endLine == startLine ? '第 $startLine 行' : '第 $startLine-$endLine 行';
+        fullText = '$text\n\n【作者选中的正文片段($range)】\n$selected';
+        uiText = '$text\n（附选中片段 $range）';
+      }
+    }
     setState(() {
       _busy = true;
-      _chatUi.add(_ChatMsg(true, text));
+      _chatUi.add(_ChatMsg(true, uiText));
       _chatCtrl.clear();
     });
     _scrollChat();
@@ -161,7 +176,7 @@ class _EventEditPageState extends State<EventEditPage> {
       final settings = await SettingsStore.loadFor(LlmPurpose.writing);
       if (_messages.isEmpty) await _initSession();
       await _maybeCompress(settings);
-      _messages.add({'role': 'user', 'content': text});
+      _messages.add({'role': 'user', 'content': fullText});
       final executor = WritingToolExecutor(
         readContent: () => _contentCtrl.text,
         writeContent: (v) {
@@ -317,6 +332,29 @@ class _EventEditPageState extends State<EventEditPage> {
                       alignLabelWithHint: true,
                       border: OutlineInputBorder(),
                     ),
+                  ),
+                  const SizedBox(height: 4),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _contentCtrl,
+                    builder: (context, v, _) {
+                      final lineCount = v.text.isEmpty
+                          ? 0
+                          : '\n'.allMatches(v.text).length + 1;
+                      final s = v.selection;
+                      final selLen = s.isValid && !s.isCollapsed
+                          ? s.textInside(v.text).length
+                          : 0;
+                      return Text(
+                        '$lineCount 行 · ${v.text.length} 字'
+                        '${selLen > 0 ? ' · 已选中 $selLen 字,对话将附带选区' : ''}',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(
+                                color:
+                                    Theme.of(context).colorScheme.outline),
+                      );
+                    },
                   ),
                 ],
               ),

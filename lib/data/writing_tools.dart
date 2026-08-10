@@ -6,7 +6,7 @@ const writingToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'read_content',
-      'description': '读取当前事件正文全文;修改前必须先读,确保 replace_text 的原文逐字一致',
+      'description': '读取当前事件正文全文,每行带行号前缀"N| ";修改前必须先读,replace_text 的原文不含行号前缀',
       'parameters': {'type': 'object', 'properties': <String, dynamic>{}},
     },
   },
@@ -75,7 +75,11 @@ class WritingToolExecutor {
     switch (name) {
       case 'read_content':
         final c = readContent();
-        return c.trim().isEmpty ? '(正文目前为空)' : c;
+        if (c.trim().isEmpty) return '(正文目前为空)';
+        final lines = c.split('\n');
+        return [
+          for (var i = 0; i < lines.length; i++) '${i + 1}| ${lines[i]}'
+        ].join('\n');
       case 'replace_text':
         final oldText = args['old_text'] as String? ?? '';
         final newText = args['new_text'] as String? ?? '';
