@@ -65,6 +65,35 @@ class LlmClient {
         if (m['tool_calls'] != null) 'tool_calls': m['tool_calls'],
       };
 
+  /// 解析工具参数;拼接损坏(如 Gemini 重复帧导致 {…}{…})时提取首个平衡 JSON 对象
+  static Map<String, dynamic> decodeToolArgs(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return {};
+    try {
+      return (jsonDecode(t) as Map).cast<String, dynamic>();
+    } catch (_) {}
+    var depth = 0;
+    var start = -1;
+    for (var i = 0; i < t.length; i++) {
+      final c = t[i];
+      if (c == '{') {
+        if (depth == 0) start = i;
+        depth++;
+      } else if (c == '}') {
+        depth--;
+        if (depth == 0 && start >= 0) {
+          try {
+            return (jsonDecode(t.substring(start, i + 1)) as Map)
+                .cast<String, dynamic>();
+          } catch (_) {
+            start = -1;
+          }
+        }
+      }
+    }
+    return {};
+  }
+
   /// 安全取 choices[0]:部分服务会返回空 choices 帧(如流式末尾的 usage 块)
   static dynamic _firstChoice(dynamic data) {
     final choices = data is Map ? data['choices'] : null;
@@ -201,15 +230,7 @@ class LlmClient {
         for (final tc in toolCalls) {
           final fn = tc['function'] as Map<String, dynamic>? ?? {};
           final name = fn['name'] as String? ?? '';
-          Map<String, dynamic> args;
-          try {
-            final raw = fn['arguments'] as String? ?? '{}';
-            args = raw.trim().isEmpty
-                ? {}
-                : (jsonDecode(raw) as Map).cast<String, dynamic>();
-          } catch (_) {
-            args = {};
-          }
+          final args = decodeToolArgs(fn['arguments'] as String? ?? '');
           String result;
           try {
             result = await onToolCall(name, args);
@@ -277,15 +298,7 @@ class LlmClient {
         for (final tc in toolCalls) {
           final fn = tc['function'] as Map<String, dynamic>? ?? {};
           final name = fn['name'] as String? ?? '';
-          Map<String, dynamic> args;
-          try {
-            final raw = fn['arguments'] as String? ?? '{}';
-            args = raw.trim().isEmpty
-                ? {}
-                : (jsonDecode(raw) as Map).cast<String, dynamic>();
-          } catch (_) {
-            args = {};
-          }
+          final args = decodeToolArgs(fn['arguments'] as String? ?? '');
           String result;
           try {
             result = await onToolCall(name, args);
@@ -407,11 +420,14 @@ class LlmClient {
                 if (tc['id'] is String) acc['id'] = tc['id'] as String;
                 final fn = tc['function'];
                 if (fn is Map) {
-                  if (fn['name'] is String) {
-                    acc['name'] = acc['name']! + (fn['name'] as String);
+                  final n = fn['name'];
+                  // name 不分片;Gemini 兼容层每帧重发完整 name,重复忽略
+                  if (n is String && n.isNotEmpty && acc['name']!.isEmpty) {
+                    acc['name'] = n;
                   }
-                  if (fn['arguments'] is String) {
-                    acc['args'] = acc['args']! + (fn['arguments'] as String);
+                  final a = fn['arguments'];
+                  if (a is String && a.isNotEmpty && a != acc['args']) {
+                    acc['args'] = acc['args']! + a;
                   }
                 }
               }
@@ -450,15 +466,7 @@ class LlmClient {
               continue;
             }
             onToolStart?.call(name);
-            Map<String, dynamic> args;
-            try {
-              final raw = fn['arguments'] as String? ?? '{}';
-              args = raw.trim().isEmpty
-                  ? {}
-                  : (jsonDecode(raw) as Map).cast<String, dynamic>();
-            } catch (_) {
-              args = {};
-            }
+            final args = decodeToolArgs(fn['arguments'] as String? ?? '');
             String result;
             try {
               result = await onToolCall(name, args);

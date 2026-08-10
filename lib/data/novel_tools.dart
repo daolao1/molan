@@ -103,6 +103,9 @@ class NovelToolExecutor {
   }
 
   Future<String> _entryDetail(String name) async {
+    if (name.trim().isEmpty) {
+      return '失败:未提供 name 参数;请以 {"name":"条目名"} 形式调用,条目名取自设定清单';
+    }
     final all = await db.allEntriesOf(novelId);
     final matches = [
       for (final e in all)
