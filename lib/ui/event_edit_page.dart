@@ -51,7 +51,9 @@ class _ChatMsg {
   bool? reviewed;
 }
 
-class _EventEditPageState extends State<EventEditPage> {
+class _EventEditPageState extends State<EventEditPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tab = TabController(length: 2, vsync: this);
   late final _outlineCtrl =
       TextEditingController(text: widget.event?.outline ?? '');
   late final _contentCtrl =
@@ -86,6 +88,7 @@ class _EventEditPageState extends State<EventEditPage> {
   @override
   void dispose() {
     AppContextRegistry.pop(_ctxProvider);
+    _tab.dispose();
     _outlineCtrl.dispose();
     _contentCtrl.dispose();
     _chatCtrl.dispose();
@@ -361,82 +364,89 @@ class _EventEditPageState extends State<EventEditPage> {
                 label: const Text('保存')),
             const SizedBox(width: 8),
           ],
+          bottom: TabBar(
+            controller: _tab,
+            tabs: const [
+              Tab(text: '编辑', icon: Icon(Icons.edit_outlined)),
+              Tab(text: '对话', icon: Icon(Icons.chat_outlined)),
+            ],
+          ),
         ),
-        body: Column(
+        body: TabBarView(
+          controller: _tab,
           children: [
-            // 可滚动区:键盘弹出时正文不会被挤没,自动滚到光标
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                children: [
-                  TextField(
-                    controller: _outlineCtrl,
-                    minLines: 2,
-                    maxLines: 6,
-                    onChanged: (_) => _dirty = true,
-                    decoration: InputDecoration(
-                      labelText: '事件大纲',
-                      hintText: '可手写,或写完正文后点右侧“整理”',
-                      alignLabelWithHint: true,
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.sync_alt),
-                        tooltip: '从正文整理大纲',
-                        onPressed: _busy ? null : _outlineFromContent,
-                      ),
+            // 编辑页:大纲 + 正文
+            ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              children: [
+                TextField(
+                  controller: _outlineCtrl,
+                  minLines: 2,
+                  maxLines: 6,
+                  onChanged: (_) => _dirty = true,
+                  decoration: InputDecoration(
+                    labelText: '事件大纲',
+                    hintText: '可手写,或写完正文后点右侧“整理”',
+                    alignLabelWithHint: true,
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.sync_alt),
+                      tooltip: '从正文整理大纲',
+                      onPressed: _busy ? null : _outlineFromContent,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _contentCtrl,
-                    minLines: 12,
-                    maxLines: null,
-                    onChanged: (_) => _dirty = true,
-                    decoration: const InputDecoration(
-                      labelText: '正文(AI 通过对话直接修改这里)',
-                      alignLabelWithHint: true,
-                      border: OutlineInputBorder(),
-                    ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _contentCtrl,
+                  minLines: 12,
+                  maxLines: null,
+                  onChanged: (_) => _dirty = true,
+                  decoration: const InputDecoration(
+                    labelText: '正文(AI 在对话页直接修改这里)',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(),
                   ),
-                  const SizedBox(height: 4),
-                  ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: _contentCtrl,
-                    builder: (context, v, _) {
-                      final lineCount = v.text.isEmpty
-                          ? 0
-                          : '\n'.allMatches(v.text).length + 1;
-                      final s = v.selection;
-                      final selLen = s.isValid && !s.isCollapsed
-                          ? s.textInside(v.text).length
-                          : 0;
-                      return Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '$lineCount 行 · ${v.text.length} 字'
-                              '${selLen > 0 ? ' · 已选中 $selLen 字,对话将附带选区' : ''}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .outline),
-                            ),
+                ),
+                const SizedBox(height: 4),
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _contentCtrl,
+                  builder: (context, v, _) {
+                    final lineCount = v.text.isEmpty
+                        ? 0
+                        : '\n'.allMatches(v.text).length + 1;
+                    final s = v.selection;
+                    final selLen = s.isValid && !s.isCollapsed
+                        ? s.textInside(v.text).length
+                        : 0;
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '$lineCount 行 · ${v.text.length} 字'
+                            '${selLen > 0 ? ' · 已选中 $selLen 字,对话将附带选区' : ''}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .outline),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.undo, size: 18),
-                            tooltip: '回退上一版(${_history.length})',
-                            onPressed: _history.isEmpty ? null : _undo,
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.undo, size: 18),
+                          tooltip: '回退上一版(${_history.length})',
+                          onPressed: _history.isEmpty ? null : _undo,
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
             ),
-            _chatPanel(context),
+            // 对话页:全屏消息流 + 输入
+            _chatTab(context),
           ],
         ),
       ),
@@ -497,59 +507,61 @@ class _EventEditPageState extends State<EventEditPage> {
     );
   }
 
-  Widget _chatPanel(BuildContext context) {
-    // 键盘弹出且焦点不在对话输入时(在编正文),收起历史给正文腾地方
-    final kbOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
-    final showHistory =
-        _chatUi.isNotEmpty && (!kbOpen || _chatFocus.hasFocus);
-    final narrow = MediaQuery.sizeOf(context).width < 600;
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(
-            top: BorderSide(color: Theme.of(context).dividerColor)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showHistory)
-            ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: narrow ? 140 : 200),
-              child: ListView.builder(
-                controller: _chatScroll,
-                shrinkWrap: true,
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                itemCount: _chatUi.length,
-                itemBuilder: (context, i) {
-                  final m = _chatUi[i];
-                  if (m.isChange) return _changeCard(context, m);
-                  return Align(
-                    alignment: m.isUser
-                        ? Alignment.centerRight
-                        : Alignment.centerLeft,
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 3),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      constraints: BoxConstraints(
-                          maxWidth:
-                              MediaQuery.sizeOf(context).width * 0.75),
-                      decoration: BoxDecoration(
-                        color: m.isUser
-                            ? Theme.of(context).colorScheme.primaryContainer
-                            : Theme.of(context)
-                                .colorScheme
-                                .surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(12),
+  Widget _chatTab(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: _chatUi.isEmpty
+              ? Center(
+                  child: Text(
+                    '与 AI 对话写作\n它会直接修改编辑页的正文与大纲',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.outline),
+                  ),
+                )
+              : ListView.builder(
+                  controller: _chatScroll,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  itemCount: _chatUi.length,
+                  itemBuilder: (context, i) {
+                    final m = _chatUi[i];
+                    if (m.isChange) return _changeCard(context, m);
+                    return Align(
+                      alignment: m.isUser
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        constraints: BoxConstraints(
+                            maxWidth:
+                                MediaQuery.sizeOf(context).width * 0.75),
+                        decoration: BoxDecoration(
+                          color: m.isUser
+                              ? Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: m.isUser
+                            ? SelectableText(m.text)
+                            : MarkdownBody(data: m.text, selectable: true),
                       ),
-                      child: m.isUser
-                          ? SelectableText(m.text)
-                          : MarkdownBody(data: m.text, selectable: true),
-                    ),
-                  );
-                },
-              ),
-            ),
-          Padding(
+                    );
+                  },
+                ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            border: Border(
+                top: BorderSide(color: Theme.of(context).dividerColor)),
+          ),
+          child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: Row(
               children: [
@@ -580,8 +592,8 @@ class _EventEditPageState extends State<EventEditPage> {
               ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
