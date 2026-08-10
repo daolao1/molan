@@ -8,7 +8,8 @@ const writingToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'read_content',
-      'description': '读取当前事件正文全文,每行带行号前缀"N| ";修改前必须先读,replace_text 的原文不含行号前缀',
+      'description':
+          '读取当前事件正文全文,每行带行号前缀"N| ";末尾附作者当前高亮(如有);修改前必须先读,replace_text 的原文不含行号前缀',
       'parameters': {'type': 'object', 'properties': <String, dynamic>{}},
     },
   },
@@ -143,6 +144,7 @@ class WritingToolExecutor {
     required this.readOutline,
     required this.writeOutline,
     required this.highlight,
+    required this.readHighlight,
     required this.db,
     required this.novelId,
     required this.lookup,
@@ -160,6 +162,9 @@ class WritingToolExecutor {
   /// 高亮标记原文片段(空串=清除);返回结果消息
   final String Function(String fragment) highlight;
 
+  /// 当前高亮字符区间;无则 null
+  final ({int start, int end})? Function() readHighlight;
+
   final AppDatabase db;
   final int novelId;
   final NovelToolExecutor lookup;
@@ -170,9 +175,19 @@ class WritingToolExecutor {
         final c = readContent();
         if (c.trim().isEmpty) return '(正文目前为空)';
         final lines = c.split('\n');
-        return [
+        final numbered = [
           for (var i = 0; i < lines.length; i++) '${i + 1}| ${lines[i]}'
         ].join('\n');
+        final h = readHighlight();
+        if (h == null || h.end > c.length) return numbered;
+        final frag = c.substring(h.start, h.end);
+        final startLine = '\n'.allMatches(c.substring(0, h.start)).length + 1;
+        final endLine = startLine + '\n'.allMatches(frag).length;
+        final range =
+            endLine == startLine ? '第 $startLine 行' : '第 $startLine-$endLine 行';
+        final brief =
+            frag.length <= 80 ? frag : '${frag.substring(0, 80)}…';
+        return '$numbered\n\n【作者当前高亮($range)】$brief';
       case 'replace_text':
         final oldText = args['old_text'] as String? ?? '';
         final newText = args['new_text'] as String? ?? '';

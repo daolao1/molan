@@ -413,6 +413,12 @@ class _EventEditPageState extends State<EventEditPage>
           final line = '\n'.allMatches(c.substring(0, idx)).length + 1;
           return '已高亮第 $line 行起的 ${frag.length} 字';
         },
+        readHighlight: () {
+          final h = _contentCtrl.highlight;
+          return h == null || _contentCtrl.highlightedText == null
+              ? null
+              : (start: h.start, end: h.end);
+        },
         db: widget.db,
         novelId: widget.novel.id,
         lookup: NovelToolExecutor(widget.db, widget.novel.id),
