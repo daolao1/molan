@@ -10,6 +10,7 @@ import '../data/settings.dart';
 import 'chapters_page.dart';
 import 'entry_edit_page.dart';
 import 'reading_view.dart';
+import 'widgets.dart';
 
 class NovelPage extends StatefulWidget {
   const NovelPage({super.key, required this.db, required this.novel});
@@ -87,6 +88,7 @@ class _NovelPageState extends State<NovelPage>
 
   /// 一个提示词批量生成多条设定(输入来自列表顶部生成框)
   Future<void> _bulkGenerateLore() async {
+    if (_bulkGenerating) return;
     final request = _lorePromptCtrl.text.trim();
     if (request.isEmpty) {
       _toast('先描述要生成的设定,如:修真等级体系、三大门派及恩怨', error: true);
@@ -309,13 +311,16 @@ class _NovelPageState extends State<NovelPage>
               ],
             ),
             const SizedBox(height: 8),
-            TextField(
-              controller: _lorePromptCtrl,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: '例:修真等级体系、三大门派及恩怨、灵石货币…一条要求可生成多条',
-                border: OutlineInputBorder(),
+            SubmitOnEnter(
+              onSubmit: _bulkGenerateLore,
+              child: TextField(
+                controller: _lorePromptCtrl,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  hintText: '例:修真等级体系、三大门派及恩怨、灵石货币…Enter 生成',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
             const SizedBox(height: 8),

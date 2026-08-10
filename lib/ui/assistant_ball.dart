@@ -8,6 +8,7 @@ import '../data/llm_client.dart';
 import '../data/novel_tools.dart';
 import '../data/prompts.dart';
 import '../data/settings.dart';
+import 'widgets.dart';
 
 /// 全局悬浮球:读取当前界面上下文,按用户指令批量变更设定库
 class AssistantBall extends StatefulWidget {
@@ -61,14 +62,17 @@ class _AssistantBallState extends State<AssistantBall> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: promptCtrl,
-              autofocus: true,
-              minLines: 2,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                hintText: '例:把正文里新出现的"青鳞剑"加入物品设定 / 删除所有未使用的场景',
-                border: OutlineInputBorder(),
+            SubmitOnEnter(
+              onSubmit: () => Navigator.pop(context, true),
+              child: TextField(
+                controller: promptCtrl,
+                autofocus: true,
+                minLines: 2,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  hintText: '例:把正文里新出现的"青鳞剑"加入物品设定,Enter 执行',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
           ],

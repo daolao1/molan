@@ -10,6 +10,7 @@ import '../data/novel_tools.dart';
 import '../data/prompts.dart';
 import '../data/settings.dart';
 import '../data/writing_tools.dart';
+import 'widgets.dart';
 
 /// 事件编辑:大纲 + 正文 + 对话式写作 agent
 class EventEditPage extends StatefulWidget {
@@ -660,16 +661,18 @@ class _EventEditPageState extends State<EventEditPage>
                     child: Row(
                       children: [
                         Expanded(
-                          child: TextField(
-                            controller: _chatCtrl,
-                            minLines: 1,
-                            maxLines: 3,
-                            decoration: const InputDecoration(
-                              hintText: '快捷指令:改动直接落在正文,详情见对话页',
-                              border: OutlineInputBorder(),
-                              isDense: true,
+                          child: SubmitOnEnter(
+                            onSubmit: _send,
+                            child: TextField(
+                              controller: _chatCtrl,
+                              minLines: 1,
+                              maxLines: 3,
+                              decoration: const InputDecoration(
+                                hintText: '快捷指令:Enter 发送,Shift+Enter 换行',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
                             ),
-                            onSubmitted: (_) => _send(),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -943,17 +946,19 @@ class _EventEditPageState extends State<EventEditPage>
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _chatCtrl,
-                    focusNode: _chatFocus,
-                    minLines: 1,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      hintText: '与 AI 对话写作:写一段/改一处/续写…',
-                      border: OutlineInputBorder(),
-                      isDense: true,
+                  child: SubmitOnEnter(
+                    onSubmit: _send,
+                    child: TextField(
+                      controller: _chatCtrl,
+                      focusNode: _chatFocus,
+                      minLines: 1,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        hintText: '与 AI 对话写作:Enter 发送,Shift+Enter 换行',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
                     ),
-                    onSubmitted: (_) => _send(),
                   ),
                 ),
                 const SizedBox(width: 8),

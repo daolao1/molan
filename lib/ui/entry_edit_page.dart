@@ -7,6 +7,7 @@ import '../data/llm_client.dart';
 import '../data/novel_tools.dart';
 import '../data/prompts.dart';
 import '../data/settings.dart';
+import 'widgets.dart';
 
 class EntryEditPage extends StatefulWidget {
   const EntryEditPage(
@@ -184,6 +185,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
   }
 
   Future<void> _generate() async {
+    if (_generating) return;
     final request = _aiPromptCtrl.text.trim();
     if (request.isEmpty) {
       _toast('先用一句话描述你想要的${widget.kind.label}', error: true);
@@ -492,15 +494,18 @@ class _EntryEditPageState extends State<EntryEditPage> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    TextField(
-                      controller: _aiPromptCtrl,
-                      minLines: 2,
-                      maxLines: 4,
-                      decoration: InputDecoration(
-                        hintText: _genMode == GenerationMode.generate
-                            ? '一句话描述你想要的${widget.kind.label},AI 自由发挥填满整卡'
-                            : '写下要补充的设定,AI 只更新相关字段,其余不动',
-                        border: const OutlineInputBorder(),
+                    SubmitOnEnter(
+                      onSubmit: _generate,
+                      child: TextField(
+                        controller: _aiPromptCtrl,
+                        minLines: 2,
+                        maxLines: 4,
+                        decoration: InputDecoration(
+                          hintText: _genMode == GenerationMode.generate
+                              ? '一句话描述你想要的${widget.kind.label},Enter 生成'
+                              : '写下要补充的设定,AI 只更新相关字段,Enter 生成',
+                          border: const OutlineInputBorder(),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
