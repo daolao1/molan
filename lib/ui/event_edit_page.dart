@@ -1399,6 +1399,86 @@ class _EventEditPageState extends State<EventEditPage>
     _toast('已恢复历史对话');
   }
 
+  /// 编辑历史用户消息并从该处重发:截断之后的上下文,正文改动不自动回退
+  Future<void> _editAndResend(int uiIndex) async {
+    final m = _chatUi[uiIndex];
+    // 去掉展示用的附件后缀
+    final base = m.text.split('\n（附高亮片段').first.split('\n（附选中片段').first;
+    final ctrl = TextEditingController(text: base);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('编辑并重发'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              minLines: 2,
+              maxLines: 8,
+              decoration: const InputDecoration(
+                  border: OutlineInputBorder(), isDense: true),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '重发将丢弃此后的对话记录;已写入正文的改动不会自动回退,可用撤销按钮',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Theme.of(context).colorScheme.outline),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('重发')),
+        ],
+      ),
+    );
+    final newText = ctrl.text.trim();
+    if (ok != true || newText.isEmpty || _busy) return;
+    // 定位 _messages 截断点:UI 中从该条起(含)的 user 数 = 从尾部往前第 k 条真实 user
+    var k = 0;
+    for (var i = uiIndex; i < _chatUi.length; i++) {
+      if (_chatUi[i].isUser) k++;
+    }
+    var idx = -1, cnt = 0;
+    for (var i = _messages.length - 1; i >= 1; i--) {
+      final mm = _messages[i];
+      if (mm['role'] == 'user' &&
+          !(mm['content']?.toString().startsWith('【此前对话备忘】') ??
+              false)) {
+        cnt++;
+        if (cnt == k) {
+          idx = i;
+          break;
+        }
+      }
+    }
+    if (idx < 0) {
+      _toast('这条消息已被压缩进备忘,无法从此处重发', error: true);
+      return;
+    }
+    setState(() {
+      _messages.removeRange(idx, _messages.length);
+      _chatUi.removeRange(uiIndex, _chatUi.length);
+      // 截断前的待审批项视为接受
+      for (final x in _chatUi) {
+        if ((x.isTool || x.isChange) && x.reviewed == null) x.reviewed = true;
+        x.revert = null;
+      }
+      _chatCtrl.text = newText;
+    });
+    await _persistChat();
+    await _send();
+  }
+
   Widget _chatTab(BuildContext context) {
     return Column(
       children: [
@@ -1452,30 +1532,46 @@ class _EventEditPageState extends State<EventEditPage>
                     if (m.isChange) return _changeCard(context, m);
                     if (m.isReview) return _reviewPanel(context, m);
                     if (m.isTool) return _toolCard(context, m);
+                    final bubble = Container(
+                      margin: const EdgeInsets.symmetric(vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      constraints: BoxConstraints(
+                          maxWidth:
+                              MediaQuery.sizeOf(context).width * 0.75),
+                      decoration: BoxDecoration(
+                        color: m.isUser
+                            ? Theme.of(context)
+                                .colorScheme
+                                .primaryContainer
+                            : Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: m.isUser
+                          ? SelectableText(m.text)
+                          : MarkdownBody(data: m.text, selectable: true),
+                    );
+                    if (!m.isUser) {
+                      return Align(
+                          alignment: Alignment.centerLeft, child: bubble);
+                    }
                     return Align(
-                      alignment: m.isUser
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 3),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        constraints: BoxConstraints(
-                            maxWidth:
-                                MediaQuery.sizeOf(context).width * 0.75),
-                        decoration: BoxDecoration(
-                          color: m.isUser
-                              ? Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: m.isUser
-                            ? SelectableText(m.text)
-                            : MarkdownBody(data: m.text, selectable: true),
+                      alignment: Alignment.centerRight,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, size: 16),
+                            tooltip: '编辑并从这里重发',
+                            visualDensity: VisualDensity.compact,
+                            color: Theme.of(context).colorScheme.outline,
+                            onPressed:
+                                _busy ? null : () => _editAndResend(i),
+                          ),
+                          Flexible(child: bubble),
+                        ],
                       ),
                     );
                   },
