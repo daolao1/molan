@@ -12,3 +12,5 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+# 固定发布签名随仓库分发(保证覆盖更新)
+!app/molan-release.jks

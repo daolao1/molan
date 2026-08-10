@@ -25,11 +25,21 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            // 固定签名保证覆盖更新;keystore 随仓库分发(个人项目取舍)
+            storeFile = file("molan-release.jks")
+            storePassword = "molan-keystore-2026"
+            keyAlias = "molan"
+            keyPassword = "molan-keystore-2026"
+            enableV1Signing = true
+            enableV2Signing = true
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
