@@ -169,10 +169,26 @@ class _StyleExtractViewState extends State<StyleExtractView> {
   Future<void> _saveAll() async {
     final setName = _setNameCtrl.text.trim();
     if (setName.isEmpty || _results.isEmpty) return;
+    // 卡名只用维度名,不混入集名;重名自动加序号
+    final existing = {
+      for (final e in await widget.db.allEntriesOf(widget.novel.id))
+        if (e.kind == EntryKind.lore.name) e.name
+    };
+    String unique(String base) {
+      if (!existing.contains(base)) return base;
+      var i = 2;
+      while (existing.contains('$base $i')) {
+        i++;
+      }
+      return '$base $i';
+    }
+
     final ids = <int>[];
     for (final (dim, detail) in _results) {
+      final name = unique(dim);
+      existing.add(name);
       final id = await widget.db.createEntry(widget.novel.id, EntryKind.lore,
-          '$setName·$dim', encodeEntryContent({'detail': detail}));
+          name, encodeEntryContent({'detail': detail}));
       ids.add(id);
     }
     await widget.db.createSet(widget.novel.id, setName, ids.join(','));
