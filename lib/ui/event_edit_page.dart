@@ -152,6 +152,8 @@ class _EventEditPageState extends State<EventEditPage>
     'set_highlight': '高亮标记',
     'upsert_entry': '更新设定',
     'delete_entry': '删除设定',
+    'upsert_set': '更新设定集',
+    'delete_set': '删除设定集',
     'get_entry_detail': '查阅设定',
     'list_entries': '列出条目',
   };
@@ -861,6 +863,51 @@ class _EventEditPageState extends State<EventEditPage>
               }
               return null;
             };
+          case 'upsert_set':
+            final nm = args['name']?.toString().trim() ?? '';
+            if (nm.isEmpty) break;
+            EntrySet? beforeSet;
+            for (final s in await widget.db.setsOf(widget.novel.id)) {
+              if (s.name == nm) {
+                beforeSet = s;
+                break;
+              }
+            }
+            final bs = beforeSet;
+            final renamed = args['new_name']?.toString().trim();
+            final lookupSetName =
+                (renamed?.isNotEmpty ?? false) ? renamed! : nm;
+            revert = () async {
+              EntrySet? cur;
+              for (final s in await widget.db.setsOf(widget.novel.id)) {
+                if (s.name == lookupSetName) {
+                  cur = s;
+                  break;
+                }
+              }
+              if (bs == null) {
+                if (cur != null) await widget.db.deleteSet(cur.id);
+              } else if (cur != null) {
+                await widget.db.updateSet(cur.id, bs.name, bs.entryIds);
+              }
+              return null;
+            };
+          case 'delete_set':
+            final nm = args['name']?.toString().trim() ?? '';
+            EntrySet? victimSet;
+            for (final s in await widget.db.setsOf(widget.novel.id)) {
+              if (s.name == nm) {
+                victimSet = s;
+                break;
+              }
+            }
+            if (victimSet == null) break;
+            final vs = victimSet;
+            revert = () async {
+              await widget.db
+                  .createSet(widget.novel.id, vs.name, vs.entryIds);
+              return null;
+            };
         }
         if (mounted) setState(() => _chatUi.add(log));
         _scrollChat();
@@ -1386,6 +1433,9 @@ class _EventEditPageState extends State<EventEditPage>
           if (args['links'] is List) '关联×${(args['links'] as List).length}',
         ].join('、')})',
       'delete_entry' => '$label「${args['name']}」',
+      'upsert_set' =>
+        '$label「${args['name']}」(${args['entries'] is List ? '${(args['entries'] as List).length} 张卡' : ''})',
+      'delete_set' => '$label「${args['name']}」',
       'get_entry_detail' => '$label「${args['name']}」',
       _ => label,
     };
@@ -1622,6 +1672,8 @@ class _EventEditPageState extends State<EventEditPage>
       'set_highlight' => '$label “${s(args['text'])}”',
       'upsert_entry' => '$label「${args['name']}」',
       'delete_entry' => '$label「${args['name']}」',
+      'upsert_set' => '$label「${args['name']}」',
+      'delete_set' => '$label「${args['name']}」',
       _ => label,
     };
   }

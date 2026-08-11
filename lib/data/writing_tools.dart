@@ -149,6 +149,40 @@ const writingToolSchemas = [
       },
     },
   },
+  {
+    'type': 'function',
+    'function': {
+      'name': 'upsert_set',
+      'description': '创建或更新设定集(若干设定类卡片的命名组合,作者可整组挂载到写作会话):同名更新(entries 全量替换),不存在则创建',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'name': {'type': 'string', 'description': '集名(现名)'},
+          'new_name': {'type': 'string', 'description': '改名时的新集名,可选'},
+          'entries': {
+            'type': 'array',
+            'description': '集内设定卡名列表(仅限设定类,必须已存在);全量替换',
+            'items': {'type': 'string'},
+          },
+        },
+        'required': ['name', 'entries'],
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
+      'name': 'delete_set',
+      'description': '删除设定集(不影响集内卡片本身);仅在作者明确要求时使用',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'name': {'type': 'string', 'description': '集名(必须完全一致)'},
+        },
+        'required': ['name'],
+      },
+    },
+  },
 ];
 
 /// 执行正文编辑工具;设定检索类工具转发给 [NovelToolExecutor]
@@ -239,9 +273,63 @@ class WritingToolExecutor {
         return _upsertEntry(args);
       case 'delete_entry':
         return _deleteEntry(args);
+      case 'upsert_set':
+        return _upsertSet(args);
+      case 'delete_set':
+        return _deleteSet(args);
       default:
         return lookup.call(name, args);
     }
+  }
+
+  Future<String> _upsertSet(Map<String, dynamic> args) async {
+    final name = args['name']?.toString().trim() ?? '';
+    if (name.isEmpty) return '失败:name 不能为空';
+    final rawEntries = args['entries'];
+    if (rawEntries is! List) return '失败:entries 必须是卡片名数组';
+    final all = await db.allEntriesOf(novelId);
+    final ids = <int>[];
+    final missed = <String>[];
+    for (final r in rawEntries) {
+      final n = r?.toString().trim() ?? '';
+      if (n.isEmpty) continue;
+      Entry? found;
+      for (final e in all) {
+        if (e.kind == EntryKind.lore.name && e.name == n) {
+          found = e;
+          break;
+        }
+      }
+      found == null ? missed.add(n) : ids.add(found.id);
+    }
+    if (missed.isNotEmpty) {
+      return '失败:未找到设定类卡片:${missed.join('、')}(仅设定类可入集)';
+    }
+    final newName = args['new_name']?.toString().trim();
+    final sets = await db.setsOf(novelId);
+    for (final s in sets) {
+      if (s.name == name) {
+        await db.updateSet(
+            s.id, (newName?.isNotEmpty ?? false) ? newName! : name,
+            ids.join(','));
+        return '已更新设定集「$name」(${ids.length} 张卡${(newName?.isNotEmpty ?? false) ? ',改名为「$newName」' : ''})';
+      }
+    }
+    await db.createSet(novelId, name, ids.join(','));
+    return '已创建设定集「$name」(${ids.length} 张卡);作者可在挂载设定里整组启用';
+  }
+
+  Future<String> _deleteSet(Map<String, dynamic> args) async {
+    final name = args['name']?.toString().trim() ?? '';
+    if (name.isEmpty) return '失败:name 不能为空';
+    final sets = await db.setsOf(novelId);
+    for (final s in sets) {
+      if (s.name == name) {
+        await db.deleteSet(s.id);
+        return '已删除设定集「$name」(集内卡片保留)';
+      }
+    }
+    return '失败:未找到设定集「$name」';
   }
 
   Future<String> _deleteEntry(Map<String, dynamic> args) async {
