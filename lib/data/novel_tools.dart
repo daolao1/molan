@@ -140,7 +140,10 @@ class NovelToolExecutor {
     }
     for (final f in entryFieldsFor(kind)) {
       final v = data[f.key]?.trim() ?? '';
-      if (v.isNotEmpty) buf.writeln('${f.label}:$v');
+      // 空字段也列出并附填写指南,让模型知道还有什么可补
+      buf.writeln(v.isEmpty
+          ? '${f.label}(${f.key}):(空——可填:${f.hint.replaceAll('\n', ' ')})'
+          : '${f.label}(${f.key}):$v');
     }
     for (final x in extensionFields(kind, data).entries) {
       if (x.value.trim().isNotEmpty) buf.writeln('${x.key}:${x.value.trim()}');

@@ -35,6 +35,8 @@ String writingAgentSystem({
 - 下方【小说】背景与设定摘要是会话开始时的快照,可能已过时;对话中你或作者可能已改过设定与大纲
 - 涉及设定细节时先用 get_entry_detail 查最新内容,大纲以 read_outline 为准,不要盲信快照
 
+${kindTemplatesDoc()}
+
 作者高亮机制:
 - 作者的消息可能附带【作者高亮的正文片段】,那是他在正文里选中或钉住的文字;指令优先针对该片段操作
 - 作者让你找某段、看某处时,用 set_highlight 把定位结果标给他看;高亮任务处理完毕后可用 set_highlight("") 清除
