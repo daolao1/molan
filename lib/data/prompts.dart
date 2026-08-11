@@ -34,7 +34,7 @@ String writingAgentSystem({
 $writingChainOfThought
 ${styleEntries.isEmpty ? '' : '''
 
-【挂载设定】作者指定以下设定为本会话常驻内容,优先级最高、逐条严格遵守,与其他规则冲突时以此为准:
+【挂载设定】作者指定以下设定为本会话常驻内容,优先级最高、逐条严格遵守,与其他规则冲突时以此为准。设定中「」内的原文例句只用来说明风格特征,严禁在正文中原样或改写复用——学其法,不抄其句:
 ${styleEntries.map((e) => '■ ${e.name}\n${styleEntryFullText(e)}').join('\n\n')}'''}
 
 【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
