@@ -99,7 +99,7 @@ const writingToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'upsert_entry',
-      'description': '新增或更新一张设定卡:同名合并字段,不存在则创建。fields 限模板字段;fields.name 可改名;links 记录与其他卡片的定向关联',
+      'description': '新增或更新一张设定卡:同名合并字段,不存在则创建。fields 限模板字段(不确定时先用 get_kind_template 查);fields.name 可改名;links 记录与其他卡片的定向关联',
       'parameters': {
         'type': 'object',
         'properties': {

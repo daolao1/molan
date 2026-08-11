@@ -20,6 +20,23 @@ const novelToolSchemas = [
   {
     'type': 'function',
     'function': {
+      'name': 'get_kind_template',
+      'description': '查看某类设定卡的字段模板(key、含义、填写指南);新建或更新设定卡前先读,确保字段用对',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'kind': {
+            'type': 'string',
+            'enum': ['character', 'location', 'item', 'scene', 'lore', 'foreshadow'],
+          }
+        },
+        'required': ['kind'],
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
       'name': 'list_chapters',
       'description': '全书章节与事件目录:每章标题及其事件序号、大纲、字数',
       'parameters': {'type': 'object', 'properties': <String, dynamic>{}},
@@ -55,6 +72,12 @@ class NovelToolExecutor {
         return _entryDetail(args['name'] as String? ?? '');
       case 'list_entries':
         return _listEntries(args['kind'] as String?);
+      case 'get_kind_template':
+        final kind =
+            EntryKind.values.asNameMap()[args['kind']?.toString()];
+        return kind == null
+            ? '失败:kind 无效,可选:${EntryKind.values.map((k) => k.name).join('、')}'
+            : kindTemplateDoc(kind);
       case 'list_chapters':
         return _listChapters();
       case 'get_event_content':

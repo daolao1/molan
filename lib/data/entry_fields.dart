@@ -109,6 +109,16 @@ Map<String, String> extensionFields(EntryKind kind, Map<String, String> data) {
   };
 }
 
+/// 单个类型的字段模板文档,供 agent 按需阅读(skill 式)
+String kindTemplateDoc(EntryKind kind) {
+  final buf = StringBuffer(
+      '${kind.label}卡字段模板(upsert_entry 的 fields 只能用这些 key):\n');
+  for (final f in entryFieldsFor(kind)) {
+    buf.writeln('- ${f.key}：${f.label}——${f.hint.replaceAll('\n', ' ')}');
+  }
+  return buf.toString().trimRight();
+}
+
 /// 列表副标题:按模板顺序取第一个非空字段
 String entrySubtitle(Entry e) {
   final data = parseEntryContent(e.content);

@@ -1,8 +1,3 @@
-/// 写作 agent 的文笔准则。
-/// 架构教训:两阶段工具切换打爆缓存,已废弃;thinking 模板仪式与多层
-/// 工作流稀释注意力,也已废弃(Anthropic:prefer general instructions
-/// over prescriptive steps)。行为准则收进 system 骨架,这里只留文笔底线。
-/// 文笔规则萃取自成熟 RP 预设(狐神抚 V14.5)的真实感/防全知/反套路技法。
 library;
 
 /// 注入 system 的文笔准则
