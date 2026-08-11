@@ -2,8 +2,14 @@ import 'db.dart';
 import 'entry_fields.dart';
 import 'novel_tools.dart';
 
+/// 各类型合法字段 key 一览,内嵌进工具 description 免得模型猜
+final _fieldKeysDesc = [
+  for (final k in EntryKind.values)
+    '${k.name}=${entryFieldsFor(k).map((f) => f.key).join('/')}'
+].join('; ');
+
 /// 写作 agent 的正文编辑工具(类编程 agent 的 read/write 范式)
-const writingToolSchemas = [
+final writingToolSchemas = [
   {
     'type': 'function',
     'function': {
@@ -111,7 +117,7 @@ const writingToolSchemas = [
           'fields': {
             'type': 'object',
             'description':
-                '字段内容,key 限该类型的模板字段(中文标签亦可);更新时只给需修改的;含 "name" 时表示改名;放不进具体字段的内容并入备注',
+                '字段内容,key 必须出自该类型的合法列表——$_fieldKeysDesc。更新时只给需修改的 key;含 "name" 时表示改名;字段含义与填写指南用 get_kind_template 查',
           },
           'links': {
             'type': 'array',
