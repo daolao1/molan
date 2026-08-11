@@ -366,18 +366,42 @@ class _EventEditPageState extends State<EventEditPage>
                   child: SingleChildScrollView(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        for (final e in all)
-                          CheckboxListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(
-                                '[${EntryKind.values.byName(e.kind).label}] ${e.name}'),
-                            value: selected.contains(e.id),
-                            onChanged: (v) => setDialog(() => v == true
-                                ? selected.add(e.id)
-                                : selected.remove(e.id)),
-                          ),
+                        // 文风卡通常建在"设定"类,排最前
+                        for (final kind in const [
+                          EntryKind.lore,
+                          EntryKind.character,
+                          EntryKind.location,
+                          EntryKind.scene,
+                          EntryKind.item,
+                          EntryKind.foreshadow,
+                        ]) ...[
+                          if (all.any((e) => e.kind == kind.name))
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(kind.label,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .outline)),
+                            ),
+                          for (final e in all)
+                            if (e.kind == kind.name)
+                              CheckboxListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(e.name),
+                                value: selected.contains(e.id),
+                                onChanged: (v) => setDialog(() =>
+                                    v == true
+                                        ? selected.add(e.id)
+                                        : selected.remove(e.id)),
+                              ),
+                        ],
                       ],
                     ),
                   ),
