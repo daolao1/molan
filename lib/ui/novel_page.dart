@@ -372,50 +372,129 @@ class _EntryList extends StatelessWidget {
   final void Function(Entry) onTapEntry;
   final Widget? header;
 
+  Widget _entryCard(Entry e) {
+    final subtitle = entrySubtitle(e);
+    return Card(
+      child: ListTile(
+        leading: Icon(kind.icon),
+        title: Text(e.name),
+        subtitle: subtitle.isEmpty
+            ? null
+            : Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+        trailing: PopupMenuButton<String>(
+          onSelected: (v) async {
+            if (v == 'delete') await db.deleteEntry(e.id);
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(value: 'delete', child: Text('删除')),
+          ],
+        ),
+        onTap: () => onTapEntry(e),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Entry>>(
       stream: db.watchEntries(novelId, kind),
       builder: (context, snapshot) {
         final items = snapshot.data ?? const [];
-        return ListView.builder(
-          padding: const EdgeInsets.all(8),
-          itemCount: items.length + (header == null ? 0 : 1) + (items.isEmpty ? 1 : 0),
-          itemBuilder: (context, index) {
-            var i = index;
-            if (header != null) {
-              if (i == 0) return header!;
-              i--;
+        // 知识页按设定集分组:集内卡收进 ExpansionTile,未入集的平铺
+        if (kind != EntryKind.lore) {
+          return _plainList(items);
+        }
+        return StreamBuilder<List<EntrySet>>(
+          stream: db.watchSets(novelId),
+          builder: (context, setSnap) {
+            final sets = setSnap.data ?? const [];
+            if (sets.isEmpty) return _plainList(items);
+            final byId = {for (final e in items) e.id: e};
+            final inSet = <int>{};
+            final groups = <(EntrySet, List<Entry>)>[];
+            for (final s in sets) {
+              final members = [
+                for (final t in s.entryIds.split(','))
+                  if (byId[int.tryParse(t.trim())] case final e?) e
+              ];
+              inSet.addAll(members.map((e) => e.id));
+              groups.add((s, members));
             }
-            if (items.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.all(24),
-                child: Center(child: Text('还没有${kind.label},点右下角新建')),
-              );
-            }
-            final e = items[i];
-            final subtitle = entrySubtitle(e);
-            return Card(
-              child: ListTile(
-                leading: Icon(kind.icon),
-                title: Text(e.name),
-                subtitle: subtitle.isEmpty
-                    ? null
-                    : Text(subtitle,
-                        maxLines: 2, overflow: TextOverflow.ellipsis),
-                trailing: PopupMenuButton<String>(
-                  onSelected: (v) async {
-                    if (v == 'delete') await db.deleteEntry(e.id);
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(value: 'delete', child: Text('删除')),
-                  ],
-                ),
-                onTap: () => onTapEntry(e),
-              ),
+            final loose = [for (final e in items) if (!inSet.contains(e.id)) e];
+            return ListView(
+              padding: const EdgeInsets.all(8),
+              children: [
+                if (header != null) header!,
+                for (final (s, members) in groups)
+                  Card(
+                    clipBehavior: Clip.antiAlias,
+                    child: ExpansionTile(
+                      leading: const Icon(Icons.collections_bookmark_outlined),
+                      title: Text(s.name),
+                      subtitle: Text('设定集 · ${members.length} 张卡'),
+                      children: [
+                        for (final e in members) _entryCard(e),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () async {
+                              final ok = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: Text('删除设定集「${s.name}」?'),
+                                  content: const Text('只删除分组,集内设定卡保留。'),
+                                  actions: [
+                                    TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, false),
+                                        child: const Text('取消')),
+                                    FilledButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, true),
+                                        child: const Text('删除')),
+                                  ],
+                                ),
+                              );
+                              if (ok == true) await db.deleteSet(s.id);
+                            },
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            label: const Text('删除设定集'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                for (final e in loose) _entryCard(e),
+                if (items.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Center(child: Text('还没有${kind.label},点右下角新建')),
+                  ),
+              ],
             );
           },
         );
+      },
+    );
+  }
+
+  Widget _plainList(List<Entry> items) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: items.length + (header == null ? 0 : 1) + (items.isEmpty ? 1 : 0),
+      itemBuilder: (context, index) {
+        var i = index;
+        if (header != null) {
+          if (i == 0) return header!;
+          i--;
+        }
+        if (items.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Center(child: Text('还没有${kind.label},点右下角新建')),
+          );
+        }
+        return _entryCard(items[i]);
       },
     );
   }

@@ -176,6 +176,11 @@ class AppDatabase extends _$AppDatabase {
         ..orderBy([(t) => OrderingTerm.asc(t.id)]))
       .get();
 
+  Stream<List<EntrySet>> watchSets(int novelId) => (select(entrySets)
+        ..where((t) => t.novelId.equals(novelId))
+        ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+      .watch();
+
   Future<int> createSet(int novelId, String name, String entryIds) =>
       into(entrySets).insert(EntrySetsCompanion.insert(
           novelId: novelId, name: name, entryIds: Value(entryIds)));
