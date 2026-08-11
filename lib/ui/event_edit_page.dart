@@ -1529,7 +1529,7 @@ class _EventEditPageState extends State<EventEditPage>
     await _send();
   }
 
-  /// AI 气泡内容:<thinking> 块折叠为思考卡,其余按 Markdown 渲染
+  /// AI 气泡内容:`<thinking>` 块折叠为思考卡,其余按 Markdown 渲染
   Widget _aiBody(BuildContext context, String text) {
     final scheme = Theme.of(context).colorScheme;
     final reg = RegExp(r'<thinking>([\s\S]*?)(?:</thinking>|$)');

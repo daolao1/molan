@@ -109,18 +109,6 @@ Map<String, String> extensionFields(EntryKind kind, Map<String, String> data) {
   };
 }
 
-/// 各类设定卡字段模板说明,供 agent 作为更新技能文档阅读
-String kindTemplatesDoc() {
-  final buf = StringBuffer('【设定卡字段模板】(upsert_entry 的 fields 只能用这些 key;括号内是含义与填写指南)\n');
-  for (final kind in EntryKind.values) {
-    buf.writeln('${kind.name}(${kind.label}):');
-    for (final f in entryFieldsFor(kind)) {
-      buf.writeln('  - ${f.key}：${f.label}——${f.hint.replaceAll('\n', ' ')}');
-    }
-  }
-  return buf.toString().trimRight();
-}
-
 /// 列表副标题:按模板顺序取第一个非空字段
 String entrySubtitle(Entry e) {
   final data = parseEntryContent(e.content);
