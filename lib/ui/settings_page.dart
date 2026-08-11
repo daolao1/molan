@@ -281,6 +281,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 _subProfileCard(LlmPurpose.lore, '设定卡与世界观生成使用此配置'),
                 const SizedBox(height: 8),
                 _subProfileCard(LlmPurpose.writing, '大纲与正文生成使用此配置'),
+                const SizedBox(height: 8),
+                _subProfileCard(LlmPurpose.image,
+                    '设定卡配图生成使用此配置(需支持 /images/generations 的服务,如 OpenAI dall-e-3、SiliconFlow Kolors)'),
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   onPressed: _save,

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
@@ -55,6 +56,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
 
   /// 卡面图片(base64,空=无)
   late String _imageData = widget.entry?.imageData ?? '';
+  bool _imageBusy = false;
 
   @override
   void initState() {
@@ -489,6 +491,10 @@ class _EntryEditPageState extends State<EntryEditPage> {
     );
     final bytes = res?.files.single.bytes;
     if (bytes == null) return;
+    await _setImageFromBytes(bytes);
+  }
+
+  Future<void> _setImageFromBytes(Uint8List bytes) async {
     try {
       final codec = await ui.instantiateImageCodec(bytes,
           targetWidth: 512, allowUpscaling: false);
@@ -501,6 +507,40 @@ class _EntryEditPageState extends State<EntryEditPage> {
       });
     } catch (e) {
       _toast('图片解析失败:$e', error: true);
+    }
+  }
+
+  /// 用卡面内容生图
+  Future<void> _generateImage() async {
+    if (_imageBusy) return;
+    if (!await SettingsStore.profileEnabled(LlmPurpose.image)) {
+      _toast('先在设置里启用并配置生图 API', error: true);
+      return;
+    }
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      _toast('先填名称再生图', error: true);
+      return;
+    }
+    final filled = [
+      for (final f in _fields)
+        if (_fieldCtrls[f.key]!.text.trim().isNotEmpty)
+          '${f.label}:${_fieldCtrls[f.key]!.text.trim()}'
+    ].join('\n');
+    final prompt = '为小说设定卡绘制插画。${widget.kind.label}「$name」。\n'
+        '$filled\n'
+        '要求:高质量插画,单主体,构图干净,画面中不出现任何文字。';
+    setState(() => _imageBusy = true);
+    try {
+      final settings = await SettingsStore.loadProfile(LlmPurpose.image);
+      final bytes = await LlmClient.generateImage(settings, prompt);
+      await _setImageFromBytes(bytes);
+    } on LlmException catch (e) {
+      _toast(e.message, error: true);
+    } catch (e) {
+      _toast('生图失败:$e', error: true);
+    } finally {
+      if (mounted) setState(() => _imageBusy = false);
     }
   }
 
@@ -641,44 +681,79 @@ class _EntryEditPageState extends State<EntryEditPage> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                InkWell(
-                  onTap: _pickImage,
-                  borderRadius: BorderRadius.circular(8),
-                  child: _imageData.isEmpty
-                      ? Container(
-                          width: 96,
-                          height: 96,
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .outlineVariant),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.add_photo_alternate_outlined),
-                              SizedBox(height: 4),
-                              Text('图片', style: TextStyle(fontSize: 12)),
-                            ],
-                          ),
-                        )
-                      : ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.memory(base64Decode(_imageData),
-                              width: 96, height: 96, fit: BoxFit.cover),
-                        ),
+                Column(
+                  children: [
+                    InkWell(
+                      onTap: _imageBusy ? null : _pickImage,
+                      borderRadius: BorderRadius.circular(8),
+                      child: _imageData.isEmpty
+                          ? Container(
+                              width: 96,
+                              height: 96,
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .outlineVariant),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: _imageBusy
+                                  ? const Center(
+                                      child: SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2)))
+                                  : const Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons
+                                            .add_photo_alternate_outlined),
+                                        SizedBox(height: 4),
+                                        Text('图片',
+                                            style: TextStyle(fontSize: 12)),
+                                      ],
+                                    ),
+                            )
+                          : Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.memory(
+                                      base64Decode(_imageData),
+                                      width: 96,
+                                      height: 96,
+                                      fit: BoxFit.cover),
+                                ),
+                                if (_imageBusy)
+                                  const Positioned.fill(
+                                      child: Center(
+                                          child: SizedBox(
+                                              width: 24,
+                                              height: 24,
+                                              child:
+                                                  CircularProgressIndicator(
+                                                      strokeWidth: 2)))),
+                              ],
+                            ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _imageBusy ? null : _generateImage,
+                      icon: const Icon(Icons.auto_awesome, size: 16),
+                      label: Text(_imageBusy ? '生成中' : 'AI 生图'),
+                    ),
+                    if (_imageData.isNotEmpty && !_imageBusy)
+                      TextButton.icon(
+                        onPressed: () => setState(() {
+                          _imageData = '';
+                          _dirty = true;
+                        }),
+                        icon: const Icon(Icons.close, size: 16),
+                        label: const Text('移除'),
+                      ),
+                  ],
                 ),
-                if (_imageData.isNotEmpty)
-                  IconButton(
-                    tooltip: '移除图片',
-                    onPressed: () => setState(() {
-                      _imageData = '';
-                      _dirty = true;
-                    }),
-                    icon: const Icon(Icons.close),
-                  ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextField(

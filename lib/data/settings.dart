@@ -50,7 +50,8 @@ class LlmSettings {
 enum LlmPurpose {
   main('llm', '主 API'),
   lore('llm_lore', '设定 API'),
-  writing('llm_writing', '写作 API');
+  writing('llm_writing', '写作 API'),
+  image('llm_image', '生图 API');
 
   const LlmPurpose(this.prefix, this.label);
   final String prefix;
