@@ -58,9 +58,15 @@ class _EntryEditPageState extends State<EntryEditPage> {
   late String _imageData = widget.entry?.imageData ?? '';
   bool _imageBusy = false;
 
+  /// 生图是触发式能力:启用了生图 API 才显示按钮
+  bool _imageGenEnabled = false;
+
   @override
   void initState() {
     super.initState();
+    SettingsStore.profileEnabled(LlmPurpose.image).then((v) {
+      if (mounted && v) setState(() => _imageGenEnabled = true);
+    });
     final data = parseEntryContent(widget.entry?.content ?? '');
     // 历史遗留的模板外字段并入备注类字段,不再独立存在
     final ext = extensionFields(widget.kind, data);
@@ -513,10 +519,6 @@ class _EntryEditPageState extends State<EntryEditPage> {
   /// 用卡面内容生图
   Future<void> _generateImage() async {
     if (_imageBusy) return;
-    if (!await SettingsStore.profileEnabled(LlmPurpose.image)) {
-      _toast('先在设置里启用并配置生图 API', error: true);
-      return;
-    }
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
       _toast('先填名称再生图', error: true);
@@ -747,11 +749,12 @@ class _EntryEditPageState extends State<EntryEditPage> {
                               ],
                             ),
                     ),
-                    TextButton.icon(
-                      onPressed: _imageBusy ? null : _generateImage,
-                      icon: const Icon(Icons.auto_awesome, size: 16),
-                      label: Text(_imageBusy ? '生成中' : 'AI 生图'),
-                    ),
+                    if (_imageGenEnabled)
+                      TextButton.icon(
+                        onPressed: _imageBusy ? null : _generateImage,
+                        icon: const Icon(Icons.auto_awesome, size: 16),
+                        label: Text(_imageBusy ? '生成中' : 'AI 生图'),
+                      ),
                     if (_imageData.isNotEmpty && !_imageBusy)
                       TextButton.icon(
                         onPressed: () => setState(() {
