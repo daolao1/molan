@@ -415,7 +415,7 @@ class _EntryList extends StatelessWidget {
             for (final s in sets) {
               final members = [
                 for (final t in s.entryIds.split(','))
-                  if (byId[int.tryParse(t.trim())] case final e?) e
+                  ?byId[int.tryParse(t.trim())]
               ];
               inSet.addAll(members.map((e) => e.id));
               groups.add((s, members));
@@ -424,7 +424,7 @@ class _EntryList extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.all(8),
               children: [
-                if (header != null) header!,
+                ?header,
                 for (final (s, members) in groups)
                   Card(
                     clipBehavior: Clip.antiAlias,
