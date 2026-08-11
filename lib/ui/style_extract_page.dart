@@ -22,6 +22,7 @@ class StyleExtractView extends StatefulWidget {
 }
 
 class _StyleExtractViewState extends State<StyleExtractView> {
+  final _styleNameCtrl = TextEditingController();
   final _setNameCtrl = TextEditingController();
   String _material = '';
   String _sourceName = '';
@@ -33,6 +34,7 @@ class _StyleExtractViewState extends State<StyleExtractView> {
 
   @override
   void dispose() {
+    _styleNameCtrl.dispose();
     _setNameCtrl.dispose();
     super.dispose();
   }
@@ -80,9 +82,12 @@ class _StyleExtractViewState extends State<StyleExtractView> {
       _material = text;
       _sourceName = f.name;
       _results.clear();
+      if (_styleNameCtrl.text.trim().isEmpty) {
+        _styleNameCtrl.text =
+            f.name.replaceAll(RegExp(r'\.(txt|epub)$', caseSensitive: false), '');
+      }
       if (_setNameCtrl.text.trim().isEmpty) {
-        _setNameCtrl.text =
-            '文风·${f.name.replaceAll(RegExp(r'\.(txt|epub)$', caseSensitive: false), '')}';
+        _setNameCtrl.text = '文风·${_styleNameCtrl.text.trim()}';
       }
     });
   }
@@ -132,7 +137,6 @@ class _StyleExtractViewState extends State<StyleExtractView> {
       }
     });
   }
-
   Future<void> _extract() async {
     if (_material.isEmpty || _busy) return;
     setState(() {
@@ -169,7 +173,7 @@ class _StyleExtractViewState extends State<StyleExtractView> {
   Future<void> _saveAll() async {
     final setName = _setNameCtrl.text.trim();
     if (setName.isEmpty || _results.isEmpty) return;
-    // 卡名只用维度名,不混入集名;重名自动加序号
+    // 卡名 = 风格名·维度(风格名可空),与集名互不混杂;重名自动加序号
     final existing = {
       for (final e in await widget.db.allEntriesOf(widget.novel.id))
         if (e.kind == EntryKind.lore.name) e.name
@@ -184,8 +188,9 @@ class _StyleExtractViewState extends State<StyleExtractView> {
     }
 
     final ids = <int>[];
+    final styleName = _styleNameCtrl.text.trim();
     for (final (dim, detail) in _results) {
-      final name = unique(dim);
+      final name = unique(styleName.isEmpty ? dim : '$styleName·$dim');
       existing.add(name);
       final id = await widget.db.createEntry(widget.novel.id, EntryKind.lore,
           name, encodeEntryContent({'detail': detail}));
@@ -250,13 +255,30 @@ class _StyleExtractViewState extends State<StyleExtractView> {
                 const SizedBox(height: 12),
                 SubmitOnEnter(
                   onSubmit: _busy ? () {} : _extract,
-                  child: TextField(
-                    controller: _setNameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: '设定集名称',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _styleNameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: '风格名(作为卡名前缀,如作者/作品名)',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _setNameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: '设定集名称',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),
