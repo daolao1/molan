@@ -310,15 +310,36 @@ class _EventEditPageState extends State<EventEditPage>
     return '';
   }
 
+  /// 解析挂载令牌为卡片 id 集合(set:{id} 展开为集内全部卡)
+  Set<int> _resolveMountTokens(String tokens, List<EntrySet> sets) {
+    final ids = <int>{};
+    for (final t in tokens.split(',')) {
+      final tt = t.trim();
+      if (tt.startsWith('set:')) {
+        final sid = int.tryParse(tt.substring(4));
+        for (final s in sets) {
+          if (s.id == sid) {
+            for (final e in s.entryIds.split(',')) {
+              final id = int.tryParse(e.trim());
+              if (id != null) ids.add(id);
+            }
+          }
+        }
+      } else {
+        final id = int.tryParse(tt);
+        if (id != null) ids.add(id);
+      }
+    }
+    return ids;
+  }
+
   Future<void> _initSession() async {
     final all = await widget.db.allEntriesOf(widget.novel.id);
     final links = await widget.db.linksOfNovel(widget.novel.id);
-    // 挂载的文风卡可能已被编辑,取库内最新状态
+    // 挂载的卡可能已被编辑,取库内最新状态
     final novel = await widget.db.novelById(widget.novel.id) ?? widget.novel;
-    final styleIds = {
-      for (final s in novel.styleEntryIds.split(','))
-        ?int.tryParse(s.trim())
-    };
+    final sets = await widget.db.setsOf(widget.novel.id);
+    final styleIds = _resolveMountTokens(novel.styleEntryIds, sets);
     final styles = [
       for (final e in all)
         if (styleIds.contains(e.id) && e.kind == EntryKind.lore.name) e
@@ -339,14 +360,15 @@ class _EventEditPageState extends State<EventEditPage>
     });
   }
 
-  /// 选择挂载到写作会话的文风设定卡(小说级,新对话生效)
+  /// 选择挂载到写作会话的设定卡/设定集(小说级,新对话生效)
   Future<void> _pickStyleEntries() async {
     final novel = await widget.db.novelById(widget.novel.id) ?? widget.novel;
     final all = await widget.db.allEntriesOf(widget.novel.id);
+    var sets = await widget.db.setsOf(widget.novel.id);
     if (!mounted) return;
-    final selected = <int>{
+    final selected = <String>{
       for (final s in novel.styleEntryIds.split(','))
-        ?int.tryParse(s.trim())
+        if (s.trim().isNotEmpty) s.trim()
     };
     final ok = await showDialog<bool>(
       context: context,
@@ -359,7 +381,7 @@ class _EventEditPageState extends State<EventEditPage>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('选中的设定卡将全文常驻写作会话,作为最高优先级要求(文风、写作规范、主线等都适用);新对话生效',
+                Text('选中的内容将全文常驻写作会话,作为最高优先级要求;新对话生效',
                     style: Theme.of(context).textTheme.bodySmall),
                 const SizedBox(height: 8),
                 Flexible(
@@ -368,7 +390,90 @@ class _EventEditPageState extends State<EventEditPage>
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 只允许挂"设定"类卡片(文风/写作要求都建在这)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text('设定集',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .outline)),
+                            ),
+                            TextButton.icon(
+                              icon: const Icon(Icons.add, size: 16),
+                              label: const Text('新建'),
+                              onPressed: () async {
+                                final created =
+                                    await _editSet(all, null);
+                                if (created) {
+                                  sets = await widget.db
+                                      .setsOf(widget.novel.id);
+                                  setDialog(() {});
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                        if (sets.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 4),
+                            child: Text('可把几张设定卡组合成集,一键整组挂载'),
+                          ),
+                        for (final s in sets)
+                          CheckboxListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(s.name),
+                            subtitle: Text(
+                                '含 ${s.entryIds.split(',').where((e) => e.trim().isNotEmpty).length} 张卡'),
+                            secondary: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined,
+                                      size: 18),
+                                  onPressed: () async {
+                                    final changed =
+                                        await _editSet(all, s);
+                                    if (changed) {
+                                      sets = await widget.db
+                                          .setsOf(widget.novel.id);
+                                      setDialog(() {});
+                                    }
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      size: 18),
+                                  onPressed: () async {
+                                    await widget.db.deleteSet(s.id);
+                                    selected.remove('set:${s.id}');
+                                    sets = await widget.db
+                                        .setsOf(widget.novel.id);
+                                    setDialog(() {});
+                                  },
+                                ),
+                              ],
+                            ),
+                            value: selected.contains('set:${s.id}'),
+                            onChanged: (v) => setDialog(() => v == true
+                                ? selected.add('set:${s.id}')
+                                : selected.remove('set:${s.id}')),
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text('单张设定卡',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .outline)),
+                        ),
                         if (!all.any(
                             (e) => e.kind == EntryKind.lore.name))
                           const Padding(
@@ -381,10 +486,10 @@ class _EventEditPageState extends State<EventEditPage>
                               dense: true,
                               contentPadding: EdgeInsets.zero,
                               title: Text(e.name),
-                              value: selected.contains(e.id),
+                              value: selected.contains('${e.id}'),
                               onChanged: (v) => setDialog(() => v == true
-                                  ? selected.add(e.id)
-                                  : selected.remove(e.id)),
+                                  ? selected.add('${e.id}')
+                                  : selected.remove('${e.id}')),
                             ),
                       ],
                     ),
@@ -411,9 +516,81 @@ class _EventEditPageState extends State<EventEditPage>
         setState(() {});
         _toast(selected.isEmpty
             ? '已清空挂载;开新对话生效'
-            : '已挂载 ${selected.length} 张卡;开新对话生效');
+            : '已挂载 ${selected.length} 项;开新对话生效');
       }
     }
+  }
+
+  /// 新建/编辑设定集;返回是否有变更
+  Future<bool> _editSet(List<Entry> all, EntrySet? editing) async {
+    final nameCtrl = TextEditingController(text: editing?.name ?? '');
+    final picked = <int>{
+      if (editing != null)
+        for (final s in editing.entryIds.split(','))
+          ?int.tryParse(s.trim())
+    };
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialog) => AlertDialog(
+          title: Text(editing == null ? '新建设定集' : '编辑设定集'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  autofocus: editing == null,
+                  decoration: const InputDecoration(
+                      labelText: '集名',
+                      hintText: '如:核心风格 / 主线包',
+                      border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final e in all)
+                          if (e.kind == EntryKind.lore.name)
+                            CheckboxListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(e.name),
+                              value: picked.contains(e.id),
+                              onChanged: (v) => setDialog(() =>
+                                  v == true
+                                      ? picked.add(e.id)
+                                      : picked.remove(e.id)),
+                            ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(editing == null ? '创建' : '保存')),
+          ],
+        ),
+      ),
+    );
+    final name = nameCtrl.text.trim();
+    if (ok != true || name.isEmpty) return false;
+    if (editing == null) {
+      await widget.db.createSet(widget.novel.id, name, picked.join(','));
+    } else {
+      await widget.db.updateSet(editing.id, name, picked.join(','));
+    }
+    return true;
   }
 
   /// 历史过长时压缩旧轮次为备忘。

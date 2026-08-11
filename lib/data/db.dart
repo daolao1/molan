@@ -40,6 +40,17 @@ class EntryLinks extends Table {
   TextColumn get label => text().withDefault(const Constant(''))();
 }
 
+/// 设定集:若干设定卡的命名组合,可整组挂载到写作会话
+class EntrySets extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get novelId =>
+      integer().references(Novels, #id, onDelete: KeyAction.cascade)();
+  TextColumn get name => text()();
+
+  /// 包含的设定卡 id(逗号分隔)
+  TextColumn get entryIds => text().withDefault(const Constant(''))();
+}
+
 /// 章节:只有标题,内容由事件拼接
 class Chapters extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -78,7 +89,7 @@ enum EntryKind {
 }
 
 @DriftDatabase(
-    tables: [Novels, Entries, EntryLinks, Chapters, ChapterEvents])
+    tables: [Novels, Entries, EntryLinks, EntrySets, Chapters, ChapterEvents])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
       : super(executor ??
@@ -91,7 +102,7 @@ class AppDatabase extends _$AppDatabase {
             ));
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -129,6 +140,9 @@ class AppDatabase extends _$AppDatabase {
           if (from < 9) {
             await m.addColumn(novels, novels.styleEntryIds);
           }
+          if (from < 10) {
+            await m.createTable(entrySets);
+          }
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
@@ -150,11 +164,28 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deleteNovel(int id) =>
       (delete(novels)..where((t) => t.id.equals(id))).go();
 
-  /// 更新文风挂载(逗号分隔的设定卡 id)
+  /// 更新挂载(逗号分隔令牌:纯数字=单卡 id,set:{id}=设定集)
   Future<void> updateNovelStyle(int id, String styleEntryIds) =>
       (update(novels)..where((t) => t.id.equals(id))).write(NovelsCompanion(
           styleEntryIds: Value(styleEntryIds),
           updatedAt: Value(DateTime.now())));
+
+  // ---- 设定集 ----
+  Future<List<EntrySet>> setsOf(int novelId) => (select(entrySets)
+        ..where((t) => t.novelId.equals(novelId))
+        ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+      .get();
+
+  Future<int> createSet(int novelId, String name, String entryIds) =>
+      into(entrySets).insert(EntrySetsCompanion.insert(
+          novelId: novelId, name: name, entryIds: Value(entryIds)));
+
+  Future<void> updateSet(int id, String name, String entryIds) =>
+      (update(entrySets)..where((t) => t.id.equals(id))).write(
+          EntrySetsCompanion(name: Value(name), entryIds: Value(entryIds)));
+
+  Future<void> deleteSet(int id) =>
+      (delete(entrySets)..where((t) => t.id.equals(id))).go();
 
   // ---- 条目 ----
   Stream<List<Entry>> watchEntries(int novelId, EntryKind kind) =>

@@ -1152,6 +1152,303 @@ class EntryLinksCompanion extends UpdateCompanion<EntryLink> {
   }
 }
 
+class $EntrySetsTable extends EntrySets
+    with TableInfo<$EntrySetsTable, EntrySet> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $EntrySetsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _novelIdMeta = const VerificationMeta(
+    'novelId',
+  );
+  @override
+  late final GeneratedColumn<int> novelId = GeneratedColumn<int>(
+    'novel_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES novels (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entryIdsMeta = const VerificationMeta(
+    'entryIds',
+  );
+  @override
+  late final GeneratedColumn<String> entryIds = GeneratedColumn<String>(
+    'entry_ids',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, novelId, name, entryIds];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'entry_sets';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<EntrySet> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('novel_id')) {
+      context.handle(
+        _novelIdMeta,
+        novelId.isAcceptableOrUnknown(data['novel_id']!, _novelIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_novelIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('entry_ids')) {
+      context.handle(
+        _entryIdsMeta,
+        entryIds.isAcceptableOrUnknown(data['entry_ids']!, _entryIdsMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  EntrySet map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return EntrySet(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      novelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}novel_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      entryIds: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entry_ids'],
+      )!,
+    );
+  }
+
+  @override
+  $EntrySetsTable createAlias(String alias) {
+    return $EntrySetsTable(attachedDatabase, alias);
+  }
+}
+
+class EntrySet extends DataClass implements Insertable<EntrySet> {
+  final int id;
+  final int novelId;
+  final String name;
+
+  /// 包含的设定卡 id(逗号分隔)
+  final String entryIds;
+  const EntrySet({
+    required this.id,
+    required this.novelId,
+    required this.name,
+    required this.entryIds,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['novel_id'] = Variable<int>(novelId);
+    map['name'] = Variable<String>(name);
+    map['entry_ids'] = Variable<String>(entryIds);
+    return map;
+  }
+
+  EntrySetsCompanion toCompanion(bool nullToAbsent) {
+    return EntrySetsCompanion(
+      id: Value(id),
+      novelId: Value(novelId),
+      name: Value(name),
+      entryIds: Value(entryIds),
+    );
+  }
+
+  factory EntrySet.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return EntrySet(
+      id: serializer.fromJson<int>(json['id']),
+      novelId: serializer.fromJson<int>(json['novelId']),
+      name: serializer.fromJson<String>(json['name']),
+      entryIds: serializer.fromJson<String>(json['entryIds']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'novelId': serializer.toJson<int>(novelId),
+      'name': serializer.toJson<String>(name),
+      'entryIds': serializer.toJson<String>(entryIds),
+    };
+  }
+
+  EntrySet copyWith({int? id, int? novelId, String? name, String? entryIds}) =>
+      EntrySet(
+        id: id ?? this.id,
+        novelId: novelId ?? this.novelId,
+        name: name ?? this.name,
+        entryIds: entryIds ?? this.entryIds,
+      );
+  EntrySet copyWithCompanion(EntrySetsCompanion data) {
+    return EntrySet(
+      id: data.id.present ? data.id.value : this.id,
+      novelId: data.novelId.present ? data.novelId.value : this.novelId,
+      name: data.name.present ? data.name.value : this.name,
+      entryIds: data.entryIds.present ? data.entryIds.value : this.entryIds,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EntrySet(')
+          ..write('id: $id, ')
+          ..write('novelId: $novelId, ')
+          ..write('name: $name, ')
+          ..write('entryIds: $entryIds')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, novelId, name, entryIds);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is EntrySet &&
+          other.id == this.id &&
+          other.novelId == this.novelId &&
+          other.name == this.name &&
+          other.entryIds == this.entryIds);
+}
+
+class EntrySetsCompanion extends UpdateCompanion<EntrySet> {
+  final Value<int> id;
+  final Value<int> novelId;
+  final Value<String> name;
+  final Value<String> entryIds;
+  const EntrySetsCompanion({
+    this.id = const Value.absent(),
+    this.novelId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.entryIds = const Value.absent(),
+  });
+  EntrySetsCompanion.insert({
+    this.id = const Value.absent(),
+    required int novelId,
+    required String name,
+    this.entryIds = const Value.absent(),
+  }) : novelId = Value(novelId),
+       name = Value(name);
+  static Insertable<EntrySet> custom({
+    Expression<int>? id,
+    Expression<int>? novelId,
+    Expression<String>? name,
+    Expression<String>? entryIds,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (novelId != null) 'novel_id': novelId,
+      if (name != null) 'name': name,
+      if (entryIds != null) 'entry_ids': entryIds,
+    });
+  }
+
+  EntrySetsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? novelId,
+    Value<String>? name,
+    Value<String>? entryIds,
+  }) {
+    return EntrySetsCompanion(
+      id: id ?? this.id,
+      novelId: novelId ?? this.novelId,
+      name: name ?? this.name,
+      entryIds: entryIds ?? this.entryIds,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (novelId.present) {
+      map['novel_id'] = Variable<int>(novelId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (entryIds.present) {
+      map['entry_ids'] = Variable<String>(entryIds.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EntrySetsCompanion(')
+          ..write('id: $id, ')
+          ..write('novelId: $novelId, ')
+          ..write('name: $name, ')
+          ..write('entryIds: $entryIds')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $ChaptersTable extends Chapters with TableInfo<$ChaptersTable, Chapter> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -1955,6 +2252,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $NovelsTable novels = $NovelsTable(this);
   late final $EntriesTable entries = $EntriesTable(this);
   late final $EntryLinksTable entryLinks = $EntryLinksTable(this);
+  late final $EntrySetsTable entrySets = $EntrySetsTable(this);
   late final $ChaptersTable chapters = $ChaptersTable(this);
   late final $ChapterEventsTable chapterEvents = $ChapterEventsTable(this);
   @override
@@ -1965,6 +2263,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     novels,
     entries,
     entryLinks,
+    entrySets,
     chapters,
     chapterEvents,
   ];
@@ -1990,6 +2289,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('entry_links', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'novels',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('entry_sets', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -2045,6 +2351,24 @@ final class $$NovelsTableReferences
     ).filter((f) => f.novelId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_entriesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$EntrySetsTable, List<EntrySet>>
+  _entrySetsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.entrySets,
+    aliasName: 'novels__id__entry_sets__novel_id',
+  );
+
+  $$EntrySetsTableProcessedTableManager get entrySetsRefs {
+    final manager = $$EntrySetsTableTableManager(
+      $_db,
+      $_db.entrySets,
+    ).filter((f) => f.novelId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_entrySetsRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -2125,6 +2449,31 @@ class $$NovelsTableFilterComposer
           }) => $$EntriesTableFilterComposer(
             $db: $db,
             $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> entrySetsRefs(
+    Expression<bool> Function($$EntrySetsTableFilterComposer f) f,
+  ) {
+    final $$EntrySetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.entrySets,
+      getReferencedColumn: (t) => t.novelId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntrySetsTableFilterComposer(
+            $db: $db,
+            $table: $db.entrySets,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -2256,6 +2605,31 @@ class $$NovelsTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> entrySetsRefs<T extends Object>(
+    Expression<T> Function($$EntrySetsTableAnnotationComposer a) f,
+  ) {
+    final $$EntrySetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.entrySets,
+      getReferencedColumn: (t) => t.novelId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntrySetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.entrySets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> chaptersRefs<T extends Object>(
     Expression<T> Function($$ChaptersTableAnnotationComposer a) f,
   ) {
@@ -2295,7 +2669,11 @@ class $$NovelsTableTableManager
           $$NovelsTableUpdateCompanionBuilder,
           (Novel, $$NovelsTableReferences),
           Novel,
-          PrefetchHooks Function({bool entriesRefs, bool chaptersRefs})
+          PrefetchHooks Function({
+            bool entriesRefs,
+            bool entrySetsRefs,
+            bool chaptersRefs,
+          })
         > {
   $$NovelsTableTableManager(_$AppDatabase db, $NovelsTable table)
     : super(
@@ -2346,42 +2724,81 @@ class $$NovelsTableTableManager
                     (e.readTable(table), $$NovelsTableReferences(db, table, e)),
               )
               .toList(),
-          prefetchHooksCallback: ({entriesRefs = false, chaptersRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [
-                if (entriesRefs) db.entries,
-                if (chaptersRefs) db.chapters,
-              ],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (entriesRefs)
-                    await $_getPrefetchedData<Novel, $NovelsTable, Entry>(
-                      currentTable: table,
-                      referencedTable: $$NovelsTableReferences
-                          ._entriesRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$NovelsTableReferences(db, table, p0).entriesRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.novelId == item.id),
-                      typedResults: items,
-                    ),
-                  if (chaptersRefs)
-                    await $_getPrefetchedData<Novel, $NovelsTable, Chapter>(
-                      currentTable: table,
-                      referencedTable: $$NovelsTableReferences
-                          ._chaptersRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$NovelsTableReferences(db, table, p0).chaptersRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.novelId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({
+                entriesRefs = false,
+                entrySetsRefs = false,
+                chaptersRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (entriesRefs) db.entries,
+                    if (entrySetsRefs) db.entrySets,
+                    if (chaptersRefs) db.chapters,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (entriesRefs)
+                        await $_getPrefetchedData<Novel, $NovelsTable, Entry>(
+                          currentTable: table,
+                          referencedTable: $$NovelsTableReferences
+                              ._entriesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$NovelsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).entriesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.novelId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (entrySetsRefs)
+                        await $_getPrefetchedData<
+                          Novel,
+                          $NovelsTable,
+                          EntrySet
+                        >(
+                          currentTable: table,
+                          referencedTable: $$NovelsTableReferences
+                              ._entrySetsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$NovelsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).entrySetsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.novelId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (chaptersRefs)
+                        await $_getPrefetchedData<Novel, $NovelsTable, Chapter>(
+                          currentTable: table,
+                          referencedTable: $$NovelsTableReferences
+                              ._chaptersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$NovelsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).chaptersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.novelId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -2398,7 +2815,11 @@ typedef $$NovelsTableProcessedTableManager =
       $$NovelsTableUpdateCompanionBuilder,
       (Novel, $$NovelsTableReferences),
       Novel,
-      PrefetchHooks Function({bool entriesRefs, bool chaptersRefs})
+      PrefetchHooks Function({
+        bool entriesRefs,
+        bool entrySetsRefs,
+        bool chaptersRefs,
+      })
     >;
 typedef $$EntriesTableCreateCompanionBuilder =
     EntriesCompanion Function({
@@ -3126,6 +3547,298 @@ typedef $$EntryLinksTableProcessedTableManager =
       (EntryLink, $$EntryLinksTableReferences),
       EntryLink,
       PrefetchHooks Function({bool fromEntryId, bool toEntryId})
+    >;
+typedef $$EntrySetsTableCreateCompanionBuilder =
+    EntrySetsCompanion Function({
+      Value<int> id,
+      required int novelId,
+      required String name,
+      Value<String> entryIds,
+    });
+typedef $$EntrySetsTableUpdateCompanionBuilder =
+    EntrySetsCompanion Function({
+      Value<int> id,
+      Value<int> novelId,
+      Value<String> name,
+      Value<String> entryIds,
+    });
+
+final class $$EntrySetsTableReferences
+    extends BaseReferences<_$AppDatabase, $EntrySetsTable, EntrySet> {
+  $$EntrySetsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $NovelsTable _novelIdTable(_$AppDatabase db) =>
+      db.novels.createAlias('entry_sets__novel_id__novels__id');
+
+  $$NovelsTableProcessedTableManager get novelId {
+    final $_column = $_itemColumn<int>('novel_id')!;
+
+    final manager = $$NovelsTableTableManager(
+      $_db,
+      $_db.novels,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_novelIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$EntrySetsTableFilterComposer
+    extends Composer<_$AppDatabase, $EntrySetsTable> {
+  $$EntrySetsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get entryIds => $composableBuilder(
+    column: $table.entryIds,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$NovelsTableFilterComposer get novelId {
+    final $$NovelsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.novelId,
+      referencedTable: $db.novels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NovelsTableFilterComposer(
+            $db: $db,
+            $table: $db.novels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$EntrySetsTableOrderingComposer
+    extends Composer<_$AppDatabase, $EntrySetsTable> {
+  $$EntrySetsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entryIds => $composableBuilder(
+    column: $table.entryIds,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$NovelsTableOrderingComposer get novelId {
+    final $$NovelsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.novelId,
+      referencedTable: $db.novels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NovelsTableOrderingComposer(
+            $db: $db,
+            $table: $db.novels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$EntrySetsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $EntrySetsTable> {
+  $$EntrySetsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get entryIds =>
+      $composableBuilder(column: $table.entryIds, builder: (column) => column);
+
+  $$NovelsTableAnnotationComposer get novelId {
+    final $$NovelsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.novelId,
+      referencedTable: $db.novels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$NovelsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.novels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$EntrySetsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $EntrySetsTable,
+          EntrySet,
+          $$EntrySetsTableFilterComposer,
+          $$EntrySetsTableOrderingComposer,
+          $$EntrySetsTableAnnotationComposer,
+          $$EntrySetsTableCreateCompanionBuilder,
+          $$EntrySetsTableUpdateCompanionBuilder,
+          (EntrySet, $$EntrySetsTableReferences),
+          EntrySet,
+          PrefetchHooks Function({bool novelId})
+        > {
+  $$EntrySetsTableTableManager(_$AppDatabase db, $EntrySetsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$EntrySetsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$EntrySetsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$EntrySetsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> novelId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> entryIds = const Value.absent(),
+              }) => EntrySetsCompanion(
+                id: id,
+                novelId: novelId,
+                name: name,
+                entryIds: entryIds,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int novelId,
+                required String name,
+                Value<String> entryIds = const Value.absent(),
+              }) => EntrySetsCompanion.insert(
+                id: id,
+                novelId: novelId,
+                name: name,
+                entryIds: entryIds,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$EntrySetsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({novelId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (novelId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.novelId,
+                                referencedTable: $$EntrySetsTableReferences
+                                    ._novelIdTable(db),
+                                referencedColumn: $$EntrySetsTableReferences
+                                    ._novelIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$EntrySetsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $EntrySetsTable,
+      EntrySet,
+      $$EntrySetsTableFilterComposer,
+      $$EntrySetsTableOrderingComposer,
+      $$EntrySetsTableAnnotationComposer,
+      $$EntrySetsTableCreateCompanionBuilder,
+      $$EntrySetsTableUpdateCompanionBuilder,
+      (EntrySet, $$EntrySetsTableReferences),
+      EntrySet,
+      PrefetchHooks Function({bool novelId})
     >;
 typedef $$ChaptersTableCreateCompanionBuilder =
     ChaptersCompanion Function({
@@ -3894,6 +4607,8 @@ class $AppDatabaseManager {
       $$EntriesTableTableManager(_db, _db.entries);
   $$EntryLinksTableTableManager get entryLinks =>
       $$EntryLinksTableTableManager(_db, _db.entryLinks);
+  $$EntrySetsTableTableManager get entrySets =>
+      $$EntrySetsTableTableManager(_db, _db.entrySets);
   $$ChaptersTableTableManager get chapters =>
       $$ChaptersTableTableManager(_db, _db.chapters);
   $$ChapterEventsTableTableManager get chapterEvents =>
