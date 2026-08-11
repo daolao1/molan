@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:http/http.dart' as http;
 
@@ -147,14 +148,20 @@ class LlmClient {
     }
   }
 
-  /// 文生图 POST /images/generations。方言差异:
+  /// 文生图。方言差异:
   /// - OpenAI dall-e:size + n + response_format,响应 data:[{b64_json|url}]
   /// - OpenAI gpt-image-1:不接受 response_format(恒 b64)
+  /// - Gemini OpenAI 兼容层(/v1beta/openai):同 OpenAI,多余参数忽略不报错
   /// - SiliconFlow(Kolors 等):image_size + batch_size,响应 images:[{url}],url 一小时过期
-  /// 逐方言尝试,参数不被接受(400)时降级到下一种
+  /// - NovelAI:自有端点 /ai/generate-image,{input,model,action,parameters};
+  ///   Accept: application/json 时响应 {images:[{image: b64}]}
+  /// 前四种逐一尝试,参数不被接受(400)时降级;NovelAI 按域名识别单独走
   static Future<Uint8List> generateImage(LlmSettings s, String prompt) async {
     if (s.model.trim().isEmpty) {
       throw LlmException('请先在设置中启用并配置生图 API');
+    }
+    if (Uri.tryParse(s.baseUrl)?.host.endsWith('novelai.net') ?? false) {
+      return _novelAiImage(s, prompt);
     }
     final model = s.model.trim();
     final attempts = <Map<String, dynamic>>[
@@ -195,6 +202,46 @@ class LlmClient {
     } catch (e) {
       _fail(e);
     }
+  }
+
+  /// NovelAI 自有生图协议(image.novelai.net)
+  static Future<Uint8List> _novelAiImage(LlmSettings s, String prompt) async {
+    // base 统一指向生图域;用户不管填 api. 还是 image. 都可用
+    final resp = await http
+        .post(Uri.parse('https://image.novelai.net/ai/generate-image'),
+            headers: {..._headers(s), 'Accept': 'application/json'},
+            body: jsonEncode({
+              'input': prompt,
+              'model': s.model.trim(),
+              'action': 'generate',
+              'parameters': {
+                'width': 832,
+                'height': 1216,
+                'n_samples': 1,
+                'steps': 23,
+                'scale': 5,
+                'sampler': 'k_euler_ancestral',
+                'qualityToggle': true,
+                'ucPreset': 0,
+              },
+            }))
+        .timeout(const Duration(seconds: 180));
+    if (resp.statusCode != 200 && resp.statusCode != 201) {
+      throw LlmException('HTTP ${resp.statusCode}:${_errorText(resp)}');
+    }
+    final ct = resp.headers['content-type'] ?? '';
+    if (ct.contains('json')) {
+      final data = jsonDecode(utf8.decode(resp.bodyBytes));
+      final b64 = (data['images'] as List?)?.firstOrNull?['image'] as String?;
+      if (b64 != null && b64.isNotEmpty) return base64Decode(b64);
+      throw LlmException('NovelAI 未返回图片数据');
+    }
+    // 兜底:zip 响应,取包内第一个文件
+    final files = ZipDecoder().decodeBytes(resp.bodyBytes).files;
+    for (final f in files) {
+      if (f.isFile) return Uint8List.fromList(f.content as List<int>);
+    }
+    throw LlmException('NovelAI 返回的压缩包为空');
   }
 
   /// 对话补全,返回模型回复文本

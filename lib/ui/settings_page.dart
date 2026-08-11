@@ -283,7 +283,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 _subProfileCard(LlmPurpose.writing, '大纲与正文生成使用此配置'),
                 const SizedBox(height: 8),
                 _subProfileCard(LlmPurpose.image,
-                    '设定卡配图生成使用此配置(需支持 /images/generations 的服务,如 OpenAI dall-e-3、SiliconFlow Kolors)'),
+                    '设定卡配图生成使用此配置。支持:OpenAI(dall-e-3/gpt-image-1)、Gemini(Base URL 填 https://generativelanguage.googleapis.com/v1beta/openai,模型如 gemini-2.5-flash-image)、SiliconFlow(Kwai-Kolors/Kolors)、NovelAI(Base URL 填 https://image.novelai.net,Key 用 pst- 持久令牌,模型如 nai-diffusion-4-5-full)'),
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   onPressed: _save,
