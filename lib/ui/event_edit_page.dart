@@ -524,76 +524,8 @@ class _EventEditPageState extends State<EventEditPage>
   }
 
   /// 新建/编辑设定集;返回是否有变更
-  Future<bool> _editSet(List<Entry> all, EntrySet? editing) async {
-    final nameCtrl = TextEditingController(text: editing?.name ?? '');
-    final picked = <int>{
-      if (editing != null)
-        for (final s in editing.entryIds.split(','))
-          ?int.tryParse(s.trim())
-    };
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialog) => AlertDialog(
-          title: Text(editing == null ? '新建设定集' : '编辑设定集'),
-          content: SizedBox(
-            width: 400,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  autofocus: editing == null,
-                  decoration: const InputDecoration(
-                      labelText: '集名',
-                      hintText: '如:核心风格 / 主线包',
-                      border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 8),
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (final e in all)
-                          if (e.kind == EntryKind.lore.name)
-                            CheckboxListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(e.name),
-                              value: picked.contains(e.id),
-                              onChanged: (v) => setDialog(() =>
-                                  v == true
-                                      ? picked.add(e.id)
-                                      : picked.remove(e.id)),
-                            ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('取消')),
-            FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: Text(editing == null ? '创建' : '保存')),
-          ],
-        ),
-      ),
-    );
-    final name = nameCtrl.text.trim();
-    if (ok != true || name.isEmpty) return false;
-    if (editing == null) {
-      await widget.db.createSet(widget.novel.id, name, picked.join(','));
-    } else {
-      await widget.db.updateSet(editing.id, name, picked.join(','));
-    }
-    return true;
-  }
+  Future<bool> _editSet(List<Entry> all, EntrySet? editing) =>
+      showEditSetDialog(context, widget.db, widget.novel.id, all, editing);
 
   /// 历史过长时压缩旧轮次为备忘。
   /// 阈值放宽以减少前缀缓存(KV cache)失效;切割点对齐到 user 消息,

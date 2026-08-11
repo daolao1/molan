@@ -408,7 +408,6 @@ class _EntryList extends StatelessWidget {
           stream: db.watchSets(novelId),
           builder: (context, setSnap) {
             final sets = setSnap.data ?? const [];
-            if (sets.isEmpty) return _plainList(items);
             final byId = {for (final e in items) e.id: e};
             final inSet = <int>{};
             final groups = <(EntrySet, List<Entry>)>[];
@@ -434,36 +433,53 @@ class _EntryList extends StatelessWidget {
                       subtitle: Text('设定集 · ${members.length} 张卡'),
                       children: [
                         for (final e in members) _entryCard(e),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton.icon(
-                            onPressed: () async {
-                              final ok = await showDialog<bool>(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  title: Text('删除设定集「${s.name}」?'),
-                                  content: const Text('只删除分组,集内设定卡保留。'),
-                                  actions: [
-                                    TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(context, false),
-                                        child: const Text('取消')),
-                                    FilledButton(
-                                        onPressed: () =>
-                                            Navigator.pop(context, true),
-                                        child: const Text('删除')),
-                                  ],
-                                ),
-                              );
-                              if (ok == true) await db.deleteSet(s.id);
-                            },
-                            icon: const Icon(Icons.delete_outline, size: 18),
-                            label: const Text('删除设定集'),
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton.icon(
+                              onPressed: () => showEditSetDialog(
+                                  context, db, novelId, items, s),
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              label: const Text('编辑'),
+                            ),
+                            TextButton.icon(
+                              onPressed: () async {
+                                final ok = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: Text('删除设定集「${s.name}」?'),
+                                    content: const Text('只删除分组,集内设定卡保留。'),
+                                    actions: [
+                                      TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context, false),
+                                          child: const Text('取消')),
+                                      FilledButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context, true),
+                                          child: const Text('删除')),
+                                    ],
+                                  ),
+                                );
+                                if (ok == true) await db.deleteSet(s.id);
+                              },
+                              icon: const Icon(Icons.delete_outline, size: 18),
+                              label: const Text('删除'),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () =>
+                        showEditSetDialog(context, db, novelId, items, null),
+                    icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                    label: const Text('新建设定集'),
+                  ),
+                ),
                 for (final e in loose) _entryCard(e),
                 if (items.isEmpty)
                   Padding(
