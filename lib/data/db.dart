@@ -104,12 +104,25 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => 10;
 
+  /// 迁移中断重跑时列可能已存在,跳过避免 duplicate column 崩库
+  Future<void> _addColumnIfAbsent(
+      Migrator m, TableInfo table, GeneratedColumn column) async {
+    final rows =
+        await customSelect('PRAGMA table_info(${table.actualTableName})').get();
+    if (rows.any((r) => r.data['name'] == column.name)) return;
+    await m.addColumn(table, column);
+  }
+
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onUpgrade: (m, from, to) async {
           if (from < 3) {
-            await customStatement(
-                'ALTER TABLE entries ADD COLUMN parent_id INTEGER NULL');
+            final cols =
+                await customSelect('PRAGMA table_info(entries)').get();
+            if (!cols.any((r) => r.data['name'] == 'parent_id')) {
+              await customStatement(
+                  'ALTER TABLE entries ADD COLUMN parent_id INTEGER NULL');
+            }
           }
           if (from < 4) await m.createTable(entryLinks);
           if (from < 5) {
@@ -118,27 +131,35 @@ class AppDatabase extends _$AppDatabase {
           }
           // createTable 用当前表定义(已含新列),只有更老的库才需补列
           if (from < 6 && from >= 5) {
-            await m.addColumn(chapterEvents, chapterEvents.chatLog);
+            await _addColumnIfAbsent(m, chapterEvents, chapterEvents.chatLog);
           }
           if (from < 7 && from >= 4) {
-            await m.addColumn(entryLinks, entryLinks.label);
+            await _addColumnIfAbsent(m, entryLinks, entryLinks.label);
           }
           if (from < 8) {
-            // 人物关系与场景归属并入通用关联
-            if (from >= 2) {
+            // 人物关系与场景归属并入通用关联;重跑安全:表/列不存在则跳过
+            final hasRelations = (await customSelect(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='character_relations'")
+                .get())
+                .isNotEmpty;
+            if (hasRelations) {
               await customStatement(
                   'INSERT INTO entry_links (from_entry_id, to_entry_id, label) '
                   'SELECT from_entry_id, to_entry_id, label FROM character_relations');
               await customStatement(
                   'DROP TABLE IF EXISTS character_relations');
             }
-            await customStatement(
-                'INSERT INTO entry_links (from_entry_id, to_entry_id, label) '
-                "SELECT id, parent_id, '位于' FROM entries WHERE parent_id IS NOT NULL");
-            await m.alterTable(TableMigration(entries));
+            final entryCols =
+                await customSelect('PRAGMA table_info(entries)').get();
+            if (entryCols.any((r) => r.data['name'] == 'parent_id')) {
+              await customStatement(
+                  'INSERT INTO entry_links (from_entry_id, to_entry_id, label) '
+                  "SELECT id, parent_id, '位于' FROM entries WHERE parent_id IS NOT NULL");
+              await m.alterTable(TableMigration(entries));
+            }
           }
           if (from < 9) {
-            await m.addColumn(novels, novels.styleEntryIds);
+            await _addColumnIfAbsent(m, novels, novels.styleEntryIds);
           }
           if (from < 10) {
             await m.createTable(entrySets);
