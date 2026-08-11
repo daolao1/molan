@@ -317,7 +317,7 @@ class _EventEditPageState extends State<EventEditPage>
     final novel = await widget.db.novelById(widget.novel.id) ?? widget.novel;
     final styleIds = {
       for (final s in novel.styleEntryIds.split(','))
-        if (int.tryParse(s.trim()) case final id?) id
+        ?int.tryParse(s.trim())
     };
     final styles = [
       for (final e in all)
@@ -346,7 +346,7 @@ class _EventEditPageState extends State<EventEditPage>
     if (!mounted) return;
     final selected = <int>{
       for (final s in novel.styleEntryIds.split(','))
-        if (int.tryParse(s.trim()) case final id?) id
+        ?int.tryParse(s.trim())
     };
     final ok = await showDialog<bool>(
       context: context,
