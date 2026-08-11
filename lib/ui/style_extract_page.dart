@@ -22,8 +22,7 @@ class StyleExtractView extends StatefulWidget {
 }
 
 class _StyleExtractViewState extends State<StyleExtractView> {
-  final _styleNameCtrl = TextEditingController();
-  final _setNameCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
   String _material = '';
   String _sourceName = '';
   bool _busy = false;
@@ -34,8 +33,7 @@ class _StyleExtractViewState extends State<StyleExtractView> {
 
   @override
   void dispose() {
-    _styleNameCtrl.dispose();
-    _setNameCtrl.dispose();
+    _nameCtrl.dispose();
     super.dispose();
   }
 
@@ -82,12 +80,9 @@ class _StyleExtractViewState extends State<StyleExtractView> {
       _material = text;
       _sourceName = f.name;
       _results.clear();
-      if (_styleNameCtrl.text.trim().isEmpty) {
-        _styleNameCtrl.text =
+      if (_nameCtrl.text.trim().isEmpty) {
+        _nameCtrl.text =
             f.name.replaceAll(RegExp(r'\.(txt|epub)$', caseSensitive: false), '');
-      }
-      if (_setNameCtrl.text.trim().isEmpty) {
-        _setNameCtrl.text = '文风·${_styleNameCtrl.text.trim()}';
       }
     });
   }
@@ -132,9 +127,6 @@ class _StyleExtractViewState extends State<StyleExtractView> {
       _material = text;
       _sourceName = '粘贴的文本';
       _results.clear();
-      if (_setNameCtrl.text.trim().isEmpty) {
-        _setNameCtrl.text = '文风·未命名';
-      }
     });
   }
   Future<void> _extract() async {
@@ -171,9 +163,14 @@ class _StyleExtractViewState extends State<StyleExtractView> {
   }
 
   Future<void> _saveAll() async {
-    final setName = _setNameCtrl.text.trim();
-    if (setName.isEmpty || _results.isEmpty) return;
-    // 卡名 = 风格名·维度(风格名可空),与集名互不混杂;重名自动加序号
+    final name = _nameCtrl.text.trim();
+    if (_results.isEmpty) return;
+    if (name.isEmpty) {
+      _toast('先填个名字(如作者/作品名)', error: true);
+      return;
+    }
+    // 同一名字合成:集名 = 文风·名字,卡名 = 名字·维度;重名自动加序号
+    final setName = '文风·$name';
     final existing = {
       for (final e in await widget.db.allEntriesOf(widget.novel.id))
         if (e.kind == EntryKind.lore.name) e.name
@@ -188,12 +185,11 @@ class _StyleExtractViewState extends State<StyleExtractView> {
     }
 
     final ids = <int>[];
-    final styleName = _styleNameCtrl.text.trim();
     for (final (dim, detail) in _results) {
-      final name = unique(styleName.isEmpty ? dim : '$styleName·$dim');
-      existing.add(name);
+      final entryName = unique('$name·$dim');
+      existing.add(entryName);
       final id = await widget.db.createEntry(widget.novel.id, EntryKind.lore,
-          name, encodeEntryContent({'detail': detail}));
+          entryName, encodeEntryContent({'detail': detail}));
       ids.add(id);
     }
     await widget.db.createSet(widget.novel.id, setName, ids.join(','));
@@ -255,30 +251,13 @@ class _StyleExtractViewState extends State<StyleExtractView> {
                 const SizedBox(height: 12),
                 SubmitOnEnter(
                   onSubmit: _busy ? () {} : _extract,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _styleNameCtrl,
-                          decoration: const InputDecoration(
-                            labelText: '风格名(作为卡名前缀,如作者/作品名)',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _setNameCtrl,
-                          decoration: const InputDecoration(
-                            labelText: '设定集名称',
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                        ),
-                      ),
-                    ],
+                  child: TextField(
+                    controller: _nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '名字(如作者/作品名,集名与卡名由此合成)',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
