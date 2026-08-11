@@ -674,9 +674,12 @@ class _EventEditPageState extends State<EventEditPage>
         ];
         if (ops.isNotEmpty) _chatUi.add(_ChatMsg.review(ops));
       });
-      // 在编辑页发的指令,给个简短回执
+      // 在编辑页发的指令,给个简短回执(剔除思考块)
       if (_tab.index == 0) {
-        final brief = reply.trim();
+        final brief = reply
+            .replaceAll(
+                RegExp(r'<thinking>[\s\S]*?(?:</thinking>|$)'), '')
+            .trim();
         _toast(brief.length <= 80 ? brief : '${brief.substring(0, 80)}…（详情见对话页）');
       }
       _scrollChat();
@@ -1526,6 +1529,56 @@ class _EventEditPageState extends State<EventEditPage>
     await _send();
   }
 
+  /// AI 气泡内容:<thinking> 块折叠为思考卡,其余按 Markdown 渲染
+  Widget _aiBody(BuildContext context, String text) {
+    final scheme = Theme.of(context).colorScheme;
+    final reg = RegExp(r'<thinking>([\s\S]*?)(?:</thinking>|$)');
+    final children = <Widget>[];
+    var pos = 0;
+    for (final match in reg.allMatches(text)) {
+      final before = text.substring(pos, match.start).trim();
+      if (before.isNotEmpty) {
+        children.add(MarkdownBody(data: before, selectable: true));
+      }
+      final thinking = match.group(1)?.trim() ?? '';
+      final closed = match.group(0)!.endsWith('</thinking>');
+      if (thinking.isNotEmpty) {
+        children.add(Theme(
+          data: Theme.of(context)
+              .copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(bottom: 4),
+            dense: true,
+            title: Text(closed ? '💭 思考过程' : '💭 思考中…',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: scheme.outline)),
+            children: [
+              SelectableText(thinking,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: scheme.outline, height: 1.5)),
+            ],
+          ),
+        ));
+      }
+      pos = match.end;
+    }
+    final rest = text.substring(pos).trim();
+    if (rest.isNotEmpty) {
+      children.add(MarkdownBody(data: rest, selectable: true));
+    }
+    if (children.isEmpty) {
+      return MarkdownBody(data: text, selectable: true);
+    }
+    if (children.length == 1) return children.first;
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: children);
+  }
+
   Widget _chatTab(BuildContext context) {
     return Column(
       children: [
@@ -1601,7 +1654,7 @@ class _EventEditPageState extends State<EventEditPage>
                       ),
                       child: m.isUser
                           ? SelectableText(m.text)
-                          : MarkdownBody(data: m.text, selectable: true),
+                          : _aiBody(context, m.text),
                     );
                     if (!m.isUser) {
                       return Align(
