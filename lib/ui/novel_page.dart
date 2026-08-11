@@ -10,6 +10,7 @@ import '../data/settings.dart';
 import 'chapters_page.dart';
 import 'entry_edit_page.dart';
 import 'reading_view.dart';
+import 'style_extract_page.dart';
 import 'widgets.dart';
 
 class NovelPage extends StatefulWidget {
@@ -199,12 +200,13 @@ class _NovelPageState extends State<NovelPage>
 
   @override
   Widget build(BuildContext context) {
-    const names = ['设定', '写作', '阅读'];
+    const names = ['设定', '写作', '阅读', '萃取'];
     // 窄屏(手机)用底部导航,宽屏用右侧栏
     final narrow = MediaQuery.sizeOf(context).width < 600;
     final content = switch (_section) {
       1 => ChaptersView(db: widget.db, novel: widget.novel),
       2 => ReadingView(db: widget.db, novel: widget.novel),
+      3 => StyleExtractView(db: widget.db, novel: widget.novel),
       _ => TabBarView(
           controller: _tab,
           children: [
@@ -255,6 +257,10 @@ class _NovelPageState extends State<NovelPage>
                         icon: Icon(Icons.menu_book_outlined),
                         selectedIcon: Icon(Icons.menu_book),
                         label: Text('阅读')),
+                    NavigationRailDestination(
+                        icon: Icon(Icons.auto_awesome_outlined),
+                        selectedIcon: Icon(Icons.auto_awesome),
+                        label: Text('萃取')),
                   ],
                 ),
               ],
@@ -277,6 +283,10 @@ class _NovelPageState extends State<NovelPage>
                     icon: Icon(Icons.menu_book_outlined),
                     selectedIcon: Icon(Icons.menu_book),
                     label: '阅读'),
+                NavigationDestination(
+                    icon: Icon(Icons.auto_awesome_outlined),
+                    selectedIcon: Icon(Icons.auto_awesome),
+                    label: '萃取'),
               ],
             ),
       floatingActionButton: switch (_section) {
