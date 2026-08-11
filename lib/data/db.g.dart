@@ -42,6 +42,18 @@ class $NovelsTable extends Novels with TableInfo<$NovelsTable, Novel> {
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _styleEntryIdsMeta = const VerificationMeta(
+    'styleEntryIds',
+  );
+  @override
+  late final GeneratedColumn<String> styleEntryIds = GeneratedColumn<String>(
+    'style_entry_ids',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -71,6 +83,7 @@ class $NovelsTable extends Novels with TableInfo<$NovelsTable, Novel> {
     id,
     title,
     description,
+    styleEntryIds,
     createdAt,
     updatedAt,
   ];
@@ -103,6 +116,15 @@ class $NovelsTable extends Novels with TableInfo<$NovelsTable, Novel> {
         description.isAcceptableOrUnknown(
           data['description']!,
           _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('style_entry_ids')) {
+      context.handle(
+        _styleEntryIdsMeta,
+        styleEntryIds.isAcceptableOrUnknown(
+          data['style_entry_ids']!,
+          _styleEntryIdsMeta,
         ),
       );
     }
@@ -139,6 +161,10 @@ class $NovelsTable extends Novels with TableInfo<$NovelsTable, Novel> {
         DriftSqlType.string,
         data['${effectivePrefix}description'],
       )!,
+      styleEntryIds: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}style_entry_ids'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -160,12 +186,16 @@ class Novel extends DataClass implements Insertable<Novel> {
   final int id;
   final String title;
   final String description;
+
+  /// 挂载到写作会话的文风设定卡 id(逗号分隔)
+  final String styleEntryIds;
   final DateTime createdAt;
   final DateTime updatedAt;
   const Novel({
     required this.id,
     required this.title,
     required this.description,
+    required this.styleEntryIds,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -175,6 +205,7 @@ class Novel extends DataClass implements Insertable<Novel> {
     map['id'] = Variable<int>(id);
     map['title'] = Variable<String>(title);
     map['description'] = Variable<String>(description);
+    map['style_entry_ids'] = Variable<String>(styleEntryIds);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -185,6 +216,7 @@ class Novel extends DataClass implements Insertable<Novel> {
       id: Value(id),
       title: Value(title),
       description: Value(description),
+      styleEntryIds: Value(styleEntryIds),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -199,6 +231,7 @@ class Novel extends DataClass implements Insertable<Novel> {
       id: serializer.fromJson<int>(json['id']),
       title: serializer.fromJson<String>(json['title']),
       description: serializer.fromJson<String>(json['description']),
+      styleEntryIds: serializer.fromJson<String>(json['styleEntryIds']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -210,6 +243,7 @@ class Novel extends DataClass implements Insertable<Novel> {
       'id': serializer.toJson<int>(id),
       'title': serializer.toJson<String>(title),
       'description': serializer.toJson<String>(description),
+      'styleEntryIds': serializer.toJson<String>(styleEntryIds),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -219,12 +253,14 @@ class Novel extends DataClass implements Insertable<Novel> {
     int? id,
     String? title,
     String? description,
+    String? styleEntryIds,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => Novel(
     id: id ?? this.id,
     title: title ?? this.title,
     description: description ?? this.description,
+    styleEntryIds: styleEntryIds ?? this.styleEntryIds,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -235,6 +271,9 @@ class Novel extends DataClass implements Insertable<Novel> {
       description: data.description.present
           ? data.description.value
           : this.description,
+      styleEntryIds: data.styleEntryIds.present
+          ? data.styleEntryIds.value
+          : this.styleEntryIds,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -246,6 +285,7 @@ class Novel extends DataClass implements Insertable<Novel> {
           ..write('id: $id, ')
           ..write('title: $title, ')
           ..write('description: $description, ')
+          ..write('styleEntryIds: $styleEntryIds, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -253,7 +293,8 @@ class Novel extends DataClass implements Insertable<Novel> {
   }
 
   @override
-  int get hashCode => Object.hash(id, title, description, createdAt, updatedAt);
+  int get hashCode =>
+      Object.hash(id, title, description, styleEntryIds, createdAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -261,6 +302,7 @@ class Novel extends DataClass implements Insertable<Novel> {
           other.id == this.id &&
           other.title == this.title &&
           other.description == this.description &&
+          other.styleEntryIds == this.styleEntryIds &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -269,12 +311,14 @@ class NovelsCompanion extends UpdateCompanion<Novel> {
   final Value<int> id;
   final Value<String> title;
   final Value<String> description;
+  final Value<String> styleEntryIds;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const NovelsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
     this.description = const Value.absent(),
+    this.styleEntryIds = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -282,6 +326,7 @@ class NovelsCompanion extends UpdateCompanion<Novel> {
     this.id = const Value.absent(),
     required String title,
     this.description = const Value.absent(),
+    this.styleEntryIds = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   }) : title = Value(title);
@@ -289,6 +334,7 @@ class NovelsCompanion extends UpdateCompanion<Novel> {
     Expression<int>? id,
     Expression<String>? title,
     Expression<String>? description,
+    Expression<String>? styleEntryIds,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -296,6 +342,7 @@ class NovelsCompanion extends UpdateCompanion<Novel> {
       if (id != null) 'id': id,
       if (title != null) 'title': title,
       if (description != null) 'description': description,
+      if (styleEntryIds != null) 'style_entry_ids': styleEntryIds,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -305,6 +352,7 @@ class NovelsCompanion extends UpdateCompanion<Novel> {
     Value<int>? id,
     Value<String>? title,
     Value<String>? description,
+    Value<String>? styleEntryIds,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -312,6 +360,7 @@ class NovelsCompanion extends UpdateCompanion<Novel> {
       id: id ?? this.id,
       title: title ?? this.title,
       description: description ?? this.description,
+      styleEntryIds: styleEntryIds ?? this.styleEntryIds,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -329,6 +378,9 @@ class NovelsCompanion extends UpdateCompanion<Novel> {
     if (description.present) {
       map['description'] = Variable<String>(description.value);
     }
+    if (styleEntryIds.present) {
+      map['style_entry_ids'] = Variable<String>(styleEntryIds.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -344,6 +396,7 @@ class NovelsCompanion extends UpdateCompanion<Novel> {
           ..write('id: $id, ')
           ..write('title: $title, ')
           ..write('description: $description, ')
+          ..write('styleEntryIds: $styleEntryIds, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -1960,6 +2013,7 @@ typedef $$NovelsTableCreateCompanionBuilder =
       Value<int> id,
       required String title,
       Value<String> description,
+      Value<String> styleEntryIds,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -1968,6 +2022,7 @@ typedef $$NovelsTableUpdateCompanionBuilder =
       Value<int> id,
       Value<String> title,
       Value<String> description,
+      Value<String> styleEntryIds,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -2036,6 +2091,11 @@ class $$NovelsTableFilterComposer
 
   ColumnFilters<String> get description => $composableBuilder(
     column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get styleEntryIds => $composableBuilder(
+    column: $table.styleEntryIds,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2124,6 +2184,11 @@ class $$NovelsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get styleEntryIds => $composableBuilder(
+    column: $table.styleEntryIds,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -2152,6 +2217,11 @@ class $$NovelsTableAnnotationComposer
 
   GeneratedColumn<String> get description => $composableBuilder(
     column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get styleEntryIds => $composableBuilder(
+    column: $table.styleEntryIds,
     builder: (column) => column,
   );
 
@@ -2243,12 +2313,14 @@ class $$NovelsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String> description = const Value.absent(),
+                Value<String> styleEntryIds = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => NovelsCompanion(
                 id: id,
                 title: title,
                 description: description,
+                styleEntryIds: styleEntryIds,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -2257,12 +2329,14 @@ class $$NovelsTableTableManager
                 Value<int> id = const Value.absent(),
                 required String title,
                 Value<String> description = const Value.absent(),
+                Value<String> styleEntryIds = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => NovelsCompanion.insert(
                 id: id,
                 title: title,
                 description: description,
+                styleEntryIds: styleEntryIds,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),

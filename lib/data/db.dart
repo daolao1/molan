@@ -9,6 +9,9 @@ class Novels extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get title => text()();
   TextColumn get description => text().withDefault(const Constant(''))();
+
+  /// 挂载到写作会话的文风设定卡 id(逗号分隔)
+  TextColumn get styleEntryIds => text().withDefault(const Constant(''))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -88,7 +91,7 @@ class AppDatabase extends _$AppDatabase {
             ));
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -123,6 +126,9 @@ class AppDatabase extends _$AppDatabase {
                 "SELECT id, parent_id, '位于' FROM entries WHERE parent_id IS NOT NULL");
             await m.alterTable(TableMigration(entries));
           }
+          if (from < 9) {
+            await m.addColumn(novels, novels.styleEntryIds);
+          }
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
@@ -143,6 +149,12 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> deleteNovel(int id) =>
       (delete(novels)..where((t) => t.id.equals(id))).go();
+
+  /// 更新文风挂载(逗号分隔的设定卡 id)
+  Future<void> updateNovelStyle(int id, String styleEntryIds) =>
+      (update(novels)..where((t) => t.id.equals(id))).write(NovelsCompanion(
+          styleEntryIds: Value(styleEntryIds),
+          updatedAt: Value(DateTime.now())));
 
   // ---- 条目 ----
   Stream<List<Entry>> watchEntries(int novelId, EntryKind kind) =>

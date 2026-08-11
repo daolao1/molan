@@ -313,10 +313,20 @@ class _EventEditPageState extends State<EventEditPage>
   Future<void> _initSession() async {
     final all = await widget.db.allEntriesOf(widget.novel.id);
     final links = await widget.db.linksOfNovel(widget.novel.id);
+    // 挂载的文风卡可能已被编辑,取库内最新状态
+    final novel = await widget.db.novelById(widget.novel.id) ?? widget.novel;
+    final styleIds = {
+      for (final s in novel.styleEntryIds.split(','))
+        if (int.tryParse(s.trim()) case final id?) id
+    };
+    final styles = [
+      for (final e in all)
+        if (styleIds.contains(e.id)) e
+    ];
     _messages.add({
       'role': 'system',
       'content': writingAgentSystem(
-        novel: widget.novel,
+        novel: novel,
         allEntries: all,
         links: links,
         chapterTitle: widget.chapter.title,
@@ -324,8 +334,78 @@ class _EventEditPageState extends State<EventEditPage>
         followingOutlines: _followingOutlines,
         prevContentTail: _prevTail,
         outline: _outlineCtrl.text,
+        styleEntries: styles,
       ),
     });
+  }
+
+  /// 选择挂载到写作会话的文风设定卡(小说级,新对话生效)
+  Future<void> _pickStyleEntries() async {
+    final novel = await widget.db.novelById(widget.novel.id) ?? widget.novel;
+    final all = await widget.db.allEntriesOf(widget.novel.id);
+    if (!mounted) return;
+    final selected = <int>{
+      for (final s in novel.styleEntryIds.split(','))
+        if (int.tryParse(s.trim()) case final id?) id
+    };
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialog) => AlertDialog(
+          title: const Text('挂载文风'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('选中的设定卡将全文注入写作会话,作为最高优先级的文风与写作要求;新对话生效',
+                    style: Theme.of(context).textTheme.bodySmall),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final e in all)
+                          CheckboxListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                                '[${EntryKind.values.byName(e.kind).label}] ${e.name}'),
+                            value: selected.contains(e.id),
+                            onChanged: (v) => setDialog(() => v == true
+                                ? selected.add(e.id)
+                                : selected.remove(e.id)),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('保存')),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) {
+      await widget.db.updateNovelStyle(
+          widget.novel.id, selected.join(','));
+      if (mounted) {
+        setState(() {});
+        _toast(selected.isEmpty
+            ? '已清空挂载;开新对话生效'
+            : '已挂载 ${selected.length} 张卡;开新对话生效');
+      }
+    }
   }
 
   /// 历史过长时压缩旧轮次为备忘。
@@ -1598,6 +1678,11 @@ class _EventEditPageState extends State<EventEditPage>
                       ?.copyWith(
                           color: Theme.of(context).colorScheme.outline),
                 ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.brush_outlined, size: 20),
+                tooltip: '挂载文风',
+                onPressed: _busy ? null : _pickStyleEntries,
               ),
               IconButton(
                 icon: const Icon(Icons.history, size: 20),

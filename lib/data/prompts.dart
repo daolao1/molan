@@ -17,6 +17,7 @@ String writingAgentSystem({
   List<String> followingOutlines = const [],
   required String prevContentTail,
   required String outline,
+  List<Entry> styleEntries = const [],
 }) =>
     '''
 你是这部小说的写作搭档,与作者多轮对话协作,用工具直接管理当前事件的正文、大纲与设定库。
@@ -31,6 +32,10 @@ String writingAgentSystem({
 - 篇幅没有固定限制,按叙事需要与作者要求定;每轮结束用一两句话说明做了什么;中文写作
 
 $writingChainOfThought
+${styleEntries.isEmpty ? '' : '''
+
+【挂载文风】作者指定以下设定为本会话的文风与写作要求,优先级最高、逐条严格遵守,与其他规则冲突时以此为准:
+${styleEntries.map((e) => '■ ${e.name}\n${styleEntryFullText(e)}').join('\n\n')}'''}
 
 【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
 ${_novelContext(allEntries, links)}
@@ -40,6 +45,18 @@ ${_novelContext(allEntries, links)}
 【前文结尾】${prevContentTail.isEmpty ? '(无)' : '\n…$prevContentTail'}
 【当前事件大纲】${outline.trim().isEmpty ? '(暂无,可依作者对话意图写作)' : outline.trim()}
 ''';
+
+/// 挂载文风卡的全文(所有非空字段拼接)
+String styleEntryFullText(Entry e) {
+  final data = parseEntryContent(e.content);
+  final kind = EntryKind.values.byName(e.kind);
+  final parts = <String>[];
+  for (final f in entryFieldsFor(kind)) {
+    final v = data[f.key]?.trim() ?? '';
+    if (v.isNotEmpty) parts.add(v);
+  }
+  return parts.join('\n');
+}
 
 /// 对话历史压缩:把旧轮次总结为备忘
 const compressChatSystem = '''
