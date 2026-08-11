@@ -527,11 +527,20 @@ class _EntryEditPageState extends State<EntryEditPage> {
         if (_fieldCtrls[f.key]!.text.trim().isNotEmpty)
           '${f.label}:${_fieldCtrls[f.key]!.text.trim()}'
     ].join('\n');
-    final prompt = '为小说设定卡绘制插画。${widget.kind.label}「$name」。\n'
-        '$filled\n'
-        '要求:高质量插画,单主体,构图干净,画面中不出现任何文字。';
+    final card = '${widget.kind.label}「$name」\n$filled';
     setState(() => _imageBusy = true);
     try {
+      // 两段式:先用文本模型把卡面提炼成视觉化英文提示词,失败则退回原文拼接
+      String prompt;
+      try {
+        final loreSettings = await SettingsStore.loadFor(LlmPurpose.lore);
+        prompt = (await LlmClient.chat(loreSettings,
+                system: imagePromptSystem, user: card))
+            .trim();
+      } catch (_) {
+        prompt = '$card\nhigh quality illustration, single subject, '
+            'clean composition, no text';
+      }
       final settings = await SettingsStore.loadProfile(LlmPurpose.image);
       final bytes = await LlmClient.generateImage(settings, prompt);
       await _setImageFromBytes(bytes);

@@ -71,6 +71,17 @@ const outlineFromContentSystem = '''
 阅读事件正文,提炼一段简洁的事件大纲:谁、在哪、做了什么、结果或转折。
 只输出大纲文本,不要解释、标题或序号;中文。''';
 
+/// 把设定卡内容提炼为生图提示词:剔除叙事,只留视觉要素,英文输出
+const imagePromptSystem = '''
+你为文生图模型撰写提示词。根据给出的小说设定卡,提炼画面的视觉要素,写成一段英文提示词。
+
+要求:
+- 只描述看得见的东西:主体外观(体貌/服饰/材质/颜色)、姿态神情、环境光影、氛围色调、构图视角
+- 叙事性内容(背景故事、性格、能力机制、人际关系)转译成可见线索或直接舍弃
+- 人物卡以单人全身或半身像为主;地点/场景卡以环境视角为主;物品卡以特写为主
+- 末尾附画风与质量词(如 detailed illustration, clean composition, no text)
+- 只输出提示词本身,不要解释、引号或换行''';
+
 /// 悬浮球助手:根据当前界面与用户指令生成设定变更集
 String assistantChangesSystem({bool withTools = false}) {
   final toolNote = withTools
