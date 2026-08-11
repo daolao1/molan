@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'dart:convert';
+
 import '../data/app_context.dart';
 import '../data/db.dart';
 import '../data/entry_fields.dart';
@@ -386,7 +388,13 @@ class _EntryList extends StatelessWidget {
     final subtitle = entrySubtitle(e);
     return Card(
       child: ListTile(
-        leading: Icon(kind.icon),
+        leading: e.imageData.isEmpty
+            ? Icon(kind.icon)
+            : ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.memory(base64Decode(e.imageData),
+                    width: 44, height: 44, fit: BoxFit.cover),
+              ),
         title: Text(e.name),
         subtitle: subtitle.isEmpty
             ? null

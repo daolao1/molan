@@ -24,6 +24,9 @@ class Entries extends Table {
   TextColumn get kind => text()();
   TextColumn get name => text()();
   TextColumn get content => text().withDefault(const Constant(''))();
+
+  /// 卡面图片(base64,空=无图)
+  TextColumn get imageData => text().withDefault(const Constant(''))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -102,7 +105,7 @@ class AppDatabase extends _$AppDatabase {
             ));
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   /// 迁移中断重跑时列可能已存在,跳过避免 duplicate column 崩库
   Future<void> _addColumnIfAbsent(
@@ -163,6 +166,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 10) {
             await m.createTable(entrySets);
+          }
+          if (from < 11) {
+            await _addColumnIfAbsent(m, entries, entries.imageData);
           }
         },
         beforeOpen: (details) async {
@@ -327,6 +333,10 @@ class AppDatabase extends _$AppDatabase {
           name: Value(name),
           content: Value(content),
           updatedAt: Value(DateTime.now())));
+
+  Future<void> updateEntryImage(int id, String imageData) =>
+      (update(entries)..where((t) => t.id.equals(id))).write(EntriesCompanion(
+          imageData: Value(imageData), updatedAt: Value(DateTime.now())));
 
   Future<void> deleteEntry(int id) =>
       (delete(entries)..where((t) => t.id.equals(id))).go();

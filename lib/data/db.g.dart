@@ -466,6 +466,18 @@ class $EntriesTable extends Entries with TableInfo<$EntriesTable, Entry> {
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _imageDataMeta = const VerificationMeta(
+    'imageData',
+  );
+  @override
+  late final GeneratedColumn<String> imageData = GeneratedColumn<String>(
+    'image_data',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -497,6 +509,7 @@ class $EntriesTable extends Entries with TableInfo<$EntriesTable, Entry> {
     kind,
     name,
     content,
+    imageData,
     createdAt,
     updatedAt,
   ];
@@ -545,6 +558,12 @@ class $EntriesTable extends Entries with TableInfo<$EntriesTable, Entry> {
         content.isAcceptableOrUnknown(data['content']!, _contentMeta),
       );
     }
+    if (data.containsKey('image_data')) {
+      context.handle(
+        _imageDataMeta,
+        imageData.isAcceptableOrUnknown(data['image_data']!, _imageDataMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -586,6 +605,10 @@ class $EntriesTable extends Entries with TableInfo<$EntriesTable, Entry> {
         DriftSqlType.string,
         data['${effectivePrefix}content'],
       )!,
+      imageData: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}image_data'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -609,6 +632,9 @@ class Entry extends DataClass implements Insertable<Entry> {
   final String kind;
   final String name;
   final String content;
+
+  /// 卡面图片(base64,空=无图)
+  final String imageData;
   final DateTime createdAt;
   final DateTime updatedAt;
   const Entry({
@@ -617,6 +643,7 @@ class Entry extends DataClass implements Insertable<Entry> {
     required this.kind,
     required this.name,
     required this.content,
+    required this.imageData,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -628,6 +655,7 @@ class Entry extends DataClass implements Insertable<Entry> {
     map['kind'] = Variable<String>(kind);
     map['name'] = Variable<String>(name);
     map['content'] = Variable<String>(content);
+    map['image_data'] = Variable<String>(imageData);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -640,6 +668,7 @@ class Entry extends DataClass implements Insertable<Entry> {
       kind: Value(kind),
       name: Value(name),
       content: Value(content),
+      imageData: Value(imageData),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -656,6 +685,7 @@ class Entry extends DataClass implements Insertable<Entry> {
       kind: serializer.fromJson<String>(json['kind']),
       name: serializer.fromJson<String>(json['name']),
       content: serializer.fromJson<String>(json['content']),
+      imageData: serializer.fromJson<String>(json['imageData']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -669,6 +699,7 @@ class Entry extends DataClass implements Insertable<Entry> {
       'kind': serializer.toJson<String>(kind),
       'name': serializer.toJson<String>(name),
       'content': serializer.toJson<String>(content),
+      'imageData': serializer.toJson<String>(imageData),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -680,6 +711,7 @@ class Entry extends DataClass implements Insertable<Entry> {
     String? kind,
     String? name,
     String? content,
+    String? imageData,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => Entry(
@@ -688,6 +720,7 @@ class Entry extends DataClass implements Insertable<Entry> {
     kind: kind ?? this.kind,
     name: name ?? this.name,
     content: content ?? this.content,
+    imageData: imageData ?? this.imageData,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -698,6 +731,7 @@ class Entry extends DataClass implements Insertable<Entry> {
       kind: data.kind.present ? data.kind.value : this.kind,
       name: data.name.present ? data.name.value : this.name,
       content: data.content.present ? data.content.value : this.content,
+      imageData: data.imageData.present ? data.imageData.value : this.imageData,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -711,6 +745,7 @@ class Entry extends DataClass implements Insertable<Entry> {
           ..write('kind: $kind, ')
           ..write('name: $name, ')
           ..write('content: $content, ')
+          ..write('imageData: $imageData, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -718,8 +753,16 @@ class Entry extends DataClass implements Insertable<Entry> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, novelId, kind, name, content, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    novelId,
+    kind,
+    name,
+    content,
+    imageData,
+    createdAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -729,6 +772,7 @@ class Entry extends DataClass implements Insertable<Entry> {
           other.kind == this.kind &&
           other.name == this.name &&
           other.content == this.content &&
+          other.imageData == this.imageData &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -739,6 +783,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
   final Value<String> kind;
   final Value<String> name;
   final Value<String> content;
+  final Value<String> imageData;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const EntriesCompanion({
@@ -747,6 +792,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
     this.kind = const Value.absent(),
     this.name = const Value.absent(),
     this.content = const Value.absent(),
+    this.imageData = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -756,6 +802,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
     required String kind,
     required String name,
     this.content = const Value.absent(),
+    this.imageData = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   }) : novelId = Value(novelId),
@@ -767,6 +814,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
     Expression<String>? kind,
     Expression<String>? name,
     Expression<String>? content,
+    Expression<String>? imageData,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -776,6 +824,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
       if (kind != null) 'kind': kind,
       if (name != null) 'name': name,
       if (content != null) 'content': content,
+      if (imageData != null) 'image_data': imageData,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -787,6 +836,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
     Value<String>? kind,
     Value<String>? name,
     Value<String>? content,
+    Value<String>? imageData,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -796,6 +846,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
       kind: kind ?? this.kind,
       name: name ?? this.name,
       content: content ?? this.content,
+      imageData: imageData ?? this.imageData,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -819,6 +870,9 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
     if (content.present) {
       map['content'] = Variable<String>(content.value);
     }
+    if (imageData.present) {
+      map['image_data'] = Variable<String>(imageData.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -836,6 +890,7 @@ class EntriesCompanion extends UpdateCompanion<Entry> {
           ..write('kind: $kind, ')
           ..write('name: $name, ')
           ..write('content: $content, ')
+          ..write('imageData: $imageData, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -2828,6 +2883,7 @@ typedef $$EntriesTableCreateCompanionBuilder =
       required String kind,
       required String name,
       Value<String> content,
+      Value<String> imageData,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -2838,6 +2894,7 @@ typedef $$EntriesTableUpdateCompanionBuilder =
       Value<String> kind,
       Value<String> name,
       Value<String> content,
+      Value<String> imageData,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -2890,6 +2947,11 @@ class $$EntriesTableFilterComposer
 
   ColumnFilters<String> get content => $composableBuilder(
     column: $table.content,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get imageData => $composableBuilder(
+    column: $table.imageData,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2956,6 +3018,11 @@ class $$EntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get imageData => $composableBuilder(
+    column: $table.imageData,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -3010,6 +3077,9 @@ class $$EntriesTableAnnotationComposer
 
   GeneratedColumn<String> get content =>
       $composableBuilder(column: $table.content, builder: (column) => column);
+
+  GeneratedColumn<String> get imageData =>
+      $composableBuilder(column: $table.imageData, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -3074,6 +3144,7 @@ class $$EntriesTableTableManager
                 Value<String> kind = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String> content = const Value.absent(),
+                Value<String> imageData = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => EntriesCompanion(
@@ -3082,6 +3153,7 @@ class $$EntriesTableTableManager
                 kind: kind,
                 name: name,
                 content: content,
+                imageData: imageData,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -3092,6 +3164,7 @@ class $$EntriesTableTableManager
                 required String kind,
                 required String name,
                 Value<String> content = const Value.absent(),
+                Value<String> imageData = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => EntriesCompanion.insert(
@@ -3100,6 +3173,7 @@ class $$EntriesTableTableManager
                 kind: kind,
                 name: name,
                 content: content,
+                imageData: imageData,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),

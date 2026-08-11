@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:ui' as ui;
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../data/app_context.dart';
@@ -48,6 +52,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
   List<Entry> _allEntries = const [];
   final List<({int toId, String label})> _links = [];
   List<EntryLink> _incomingLinks = const [];
+
+  /// 卡面图片(base64,空=无)
+  late String _imageData = widget.entry?.imageData ?? '';
 
   @override
   void initState() {
@@ -466,8 +473,35 @@ class _EntryEditPageState extends State<EntryEditPage> {
       entryId = widget.entry!.id;
       await widget.db.updateEntry(entryId, name, content);
     }
+    if (_imageData != (widget.entry?.imageData ?? '')) {
+      await widget.db.updateEntryImage(entryId, _imageData);
+    }
     await widget.db.replaceLinksFrom(entryId, _links);
     if (mounted) Navigator.pop(context);
+  }
+
+  /// 选图并压缩到长边 512(PNG→base64)
+  Future<void> _pickImage() async {
+    final res = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
+      withData: true,
+    );
+    final bytes = res?.files.single.bytes;
+    if (bytes == null) return;
+    try {
+      final codec = await ui.instantiateImageCodec(bytes,
+          targetWidth: 512, allowUpscaling: false);
+      final frame = await codec.getNextFrame();
+      final data =
+          await frame.image.toByteData(format: ui.ImageByteFormat.png);
+      setState(() {
+        _imageData = base64Encode(data!.buffer.asUint8List());
+        _dirty = true;
+      });
+    } catch (e) {
+      _toast('图片解析失败:$e', error: true);
+    }
   }
 
   Future<bool> _confirmDiscard() async {
@@ -604,13 +638,59 @@ class _EntryEditPageState extends State<EntryEditPage> {
               ),
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: _nameCtrl,
-              autofocus: isNew,
-              onChanged: (_) => _dirty = true,
-              decoration: InputDecoration(
-                  labelText: '${widget.kind.label}名称 *',
-                  border: const OutlineInputBorder()),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                InkWell(
+                  onTap: _pickImage,
+                  borderRadius: BorderRadius.circular(8),
+                  child: _imageData.isEmpty
+                      ? Container(
+                          width: 96,
+                          height: 96,
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .outlineVariant),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add_photo_alternate_outlined),
+                              SizedBox(height: 4),
+                              Text('图片', style: TextStyle(fontSize: 12)),
+                            ],
+                          ),
+                        )
+                      : ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(base64Decode(_imageData),
+                              width: 96, height: 96, fit: BoxFit.cover),
+                        ),
+                ),
+                if (_imageData.isNotEmpty)
+                  IconButton(
+                    tooltip: '移除图片',
+                    onPressed: () => setState(() {
+                      _imageData = '';
+                      _dirty = true;
+                    }),
+                    icon: const Icon(Icons.close),
+                  ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _nameCtrl,
+                    autofocus: isNew,
+                    onChanged: (_) => _dirty = true,
+                    decoration: InputDecoration(
+                        labelText: '${widget.kind.label}名称 *',
+                        border: const OutlineInputBorder()),
+                  ),
+                ),
+              ],
             ),
             for (final f in _fields)
               if (f.key != 'appellations') ...[
