@@ -321,7 +321,7 @@ class _EventEditPageState extends State<EventEditPage>
     };
     final styles = [
       for (final e in all)
-        if (styleIds.contains(e.id)) e
+        if (styleIds.contains(e.id) && e.kind == EntryKind.lore.name) e
     ];
     _messages.add({
       'role': 'system',
@@ -368,40 +368,24 @@ class _EventEditPageState extends State<EventEditPage>
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 文风卡通常建在"设定"类,排最前
-                        for (final kind in const [
-                          EntryKind.lore,
-                          EntryKind.character,
-                          EntryKind.location,
-                          EntryKind.scene,
-                          EntryKind.item,
-                          EntryKind.foreshadow,
-                        ]) ...[
-                          if (all.any((e) => e.kind == kind.name))
-                            Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Text(kind.label,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelSmall
-                                      ?.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .outline)),
+                        // 只允许挂"设定"类卡片(文风/写作要求都建在这)
+                        if (!all.any(
+                            (e) => e.kind == EntryKind.lore.name))
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Text('还没有设定类卡片;先在设定页建一张"文风"或"写作要求"'),
+                          ),
+                        for (final e in all)
+                          if (e.kind == EntryKind.lore.name)
+                            CheckboxListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(e.name),
+                              value: selected.contains(e.id),
+                              onChanged: (v) => setDialog(() => v == true
+                                  ? selected.add(e.id)
+                                  : selected.remove(e.id)),
                             ),
-                          for (final e in all)
-                            if (e.kind == kind.name)
-                              CheckboxListTile(
-                                dense: true,
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(e.name),
-                                value: selected.contains(e.id),
-                                onChanged: (v) => setDialog(() =>
-                                    v == true
-                                        ? selected.add(e.id)
-                                        : selected.remove(e.id)),
-                              ),
-                        ],
                       ],
                     ),
                   ),
