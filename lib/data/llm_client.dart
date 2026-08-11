@@ -147,40 +147,51 @@ class LlmClient {
     }
   }
 
-  /// 文生图(OpenAI 兼容 /images/generations),返回图片字节
+  /// 文生图 POST /images/generations。方言差异:
+  /// - OpenAI dall-e:size + n + response_format,响应 data:[{b64_json|url}]
+  /// - OpenAI gpt-image-1:不接受 response_format(恒 b64)
+  /// - SiliconFlow(Kolors 等):image_size + batch_size,响应 images:[{url}],url 一小时过期
+  /// 逐方言尝试,参数不被接受(400)时降级到下一种
   static Future<Uint8List> generateImage(LlmSettings s, String prompt) async {
     if (s.model.trim().isEmpty) {
       throw LlmException('请先在设置中启用并配置生图 API');
     }
+    final model = s.model.trim();
+    final attempts = <Map<String, dynamic>>[
+      {'model': model, 'prompt': prompt, 'n': 1, 'size': '1024x1024',
+        'response_format': 'b64_json'},
+      {'model': model, 'prompt': prompt, 'n': 1, 'size': '1024x1024'},
+      {'model': model, 'prompt': prompt, 'image_size': '1024x1024',
+        'batch_size': 1},
+    ];
     try {
-      final resp = await http
-          .post(Uri.parse('${_base(s)}/images/generations'),
-              headers: _headers(s),
-              body: jsonEncode({
-                'model': s.model.trim(),
-                'prompt': prompt,
-                'n': 1,
-                'size': '1024x1024',
-                'response_format': 'b64_json',
-              }))
-          .timeout(const Duration(seconds: 180));
-      if (resp.statusCode != 200) {
-        throw LlmException('HTTP ${resp.statusCode}:${_errorText(resp)}');
+      String lastErr = '';
+      for (final body in attempts) {
+        final resp = await http
+            .post(Uri.parse('${_base(s)}/images/generations'),
+                headers: _headers(s), body: jsonEncode(body))
+            .timeout(const Duration(seconds: 180));
+        if (resp.statusCode != 200) {
+          lastErr = 'HTTP ${resp.statusCode}:${_errorText(resp)}';
+          // 参数不合导致的 400 换下一种方言;其他错误(鉴权/额度)直接抛
+          if (resp.statusCode == 400) continue;
+          throw LlmException(lastErr);
+        }
+        final data = jsonDecode(utf8.decode(resp.bodyBytes));
+        final item = ((data['data'] ?? data['images']) as List?)?.firstOrNull;
+        final b64 = item?['b64_json'] as String?;
+        if (b64 != null && b64.isNotEmpty) return base64Decode(b64);
+        final url = item?['url'] as String?;
+        if (url != null && url.isNotEmpty) {
+          final img = await http
+              .get(Uri.parse(url))
+              .timeout(const Duration(seconds: 60));
+          if (img.statusCode == 200) return img.bodyBytes;
+          throw LlmException('图片下载失败:HTTP ${img.statusCode}');
+        }
+        lastErr = '服务未返回图片数据';
       }
-      final data = jsonDecode(utf8.decode(resp.bodyBytes));
-      final item = (data['data'] as List?)?.firstOrNull;
-      final b64 = item?['b64_json'] as String?;
-      if (b64 != null && b64.isNotEmpty) return base64Decode(b64);
-      // 部分服务忽略 response_format 只回 url,再下载一次
-      final url = item?['url'] as String?;
-      if (url != null && url.isNotEmpty) {
-        final img = await http
-            .get(Uri.parse(url))
-            .timeout(const Duration(seconds: 60));
-        if (img.statusCode == 200) return img.bodyBytes;
-        throw LlmException('图片下载失败:HTTP ${img.statusCode}');
-      }
-      throw LlmException('服务未返回图片数据');
+      throw LlmException(lastErr.isEmpty ? '服务未返回图片数据' : lastErr);
     } catch (e) {
       _fail(e);
     }
