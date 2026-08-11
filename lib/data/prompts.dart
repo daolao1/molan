@@ -34,7 +34,7 @@ String writingAgentSystem({
 $writingChainOfThought
 ${styleEntries.isEmpty ? '' : '''
 
-【挂载文风】作者指定以下设定为本会话的文风与写作要求,优先级最高、逐条严格遵守,与其他规则冲突时以此为准:
+【挂载设定】作者指定以下设定为本会话常驻内容,优先级最高、逐条严格遵守,与其他规则冲突时以此为准:
 ${styleEntries.map((e) => '■ ${e.name}\n${styleEntryFullText(e)}').join('\n\n')}'''}
 
 【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}

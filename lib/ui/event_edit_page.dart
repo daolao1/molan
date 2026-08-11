@@ -352,14 +352,14 @@ class _EventEditPageState extends State<EventEditPage>
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialog) => AlertDialog(
-          title: const Text('挂载文风'),
+          title: const Text('挂载设定'),
           content: SizedBox(
             width: 420,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('选中的设定卡将全文注入写作会话,作为最高优先级的文风与写作要求;新对话生效',
+                Text('选中的设定卡将全文常驻写作会话,作为最高优先级要求(文风、写作规范、主线等都适用);新对话生效',
                     style: Theme.of(context).textTheme.bodySmall),
                 const SizedBox(height: 8),
                 Flexible(
@@ -373,7 +373,7 @@ class _EventEditPageState extends State<EventEditPage>
                             (e) => e.kind == EntryKind.lore.name))
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 8),
-                            child: Text('还没有设定类卡片;先在设定页建一张"文风"或"写作要求"'),
+                            child: Text('还没有设定类卡片;先在设定页建一张(如"文风""主线")'),
                           ),
                         for (final e in all)
                           if (e.kind == EntryKind.lore.name)
@@ -1688,8 +1688,8 @@ class _EventEditPageState extends State<EventEditPage>
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.brush_outlined, size: 20),
-                tooltip: '挂载文风',
+                icon: const Icon(Icons.push_pin_outlined, size: 20),
+                tooltip: '挂载设定',
                 onPressed: _busy ? null : _pickStyleEntries,
               ),
               IconButton(
