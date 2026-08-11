@@ -239,29 +239,39 @@ class _NovelPageState extends State<NovelPage>
               children: [
                 Expanded(child: content),
                 const VerticalDivider(width: 1),
-                NavigationRail(
-                  selectedIndex: _section,
-                  onDestinationSelected: (i) => setState(() => _section = i),
-                  labelType: NavigationRailLabelType.all,
-                  minWidth: 64,
-                  destinations: const [
-                    NavigationRailDestination(
-                        icon: Icon(Icons.category_outlined),
-                        selectedIcon: Icon(Icons.category),
-                        label: Text('设定')),
-                    NavigationRailDestination(
-                        icon: Icon(Icons.edit_note_outlined),
-                        selectedIcon: Icon(Icons.edit_note),
-                        label: Text('写作')),
-                    NavigationRailDestination(
-                        icon: Icon(Icons.menu_book_outlined),
-                        selectedIcon: Icon(Icons.menu_book),
-                        label: Text('阅读')),
-                    NavigationRailDestination(
-                        icon: Icon(Icons.auto_awesome_outlined),
-                        selectedIcon: Icon(Icons.auto_awesome),
-                        label: Text('萃取')),
-                  ],
+                LayoutBuilder(
+                  builder: (context, c) => SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: c.maxHeight),
+                      child: IntrinsicHeight(
+                        child: NavigationRail(
+                          selectedIndex: _section,
+                          onDestinationSelected: (i) =>
+                              setState(() => _section = i),
+                          labelType: NavigationRailLabelType.all,
+                          minWidth: 64,
+                          destinations: const [
+                            NavigationRailDestination(
+                                icon: Icon(Icons.category_outlined),
+                                selectedIcon: Icon(Icons.category),
+                                label: Text('设定')),
+                            NavigationRailDestination(
+                                icon: Icon(Icons.edit_note_outlined),
+                                selectedIcon: Icon(Icons.edit_note),
+                                label: Text('写作')),
+                            NavigationRailDestination(
+                                icon: Icon(Icons.menu_book_outlined),
+                                selectedIcon: Icon(Icons.menu_book),
+                                label: Text('阅读')),
+                            NavigationRailDestination(
+                                icon: Icon(Icons.auto_awesome_outlined),
+                                selectedIcon: Icon(Icons.auto_awesome),
+                                label: Text('萃取')),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
