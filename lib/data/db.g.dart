@@ -1885,6 +1885,16 @@ class $ChapterEventsTable extends ChapterEvents
       'REFERENCES chapters (id) ON DELETE CASCADE',
     ),
   );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _outlineMeta = const VerificationMeta(
     'outline',
   );
@@ -1949,6 +1959,7 @@ class $ChapterEventsTable extends ChapterEvents
   List<GeneratedColumn> get $columns => [
     id,
     chapterId,
+    name,
     outline,
     content,
     chatLog,
@@ -1977,6 +1988,12 @@ class $ChapterEventsTable extends ChapterEvents
       );
     } else if (isInserting) {
       context.missing(_chapterIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
     }
     if (data.containsKey('outline')) {
       context.handle(
@@ -2025,6 +2042,10 @@ class $ChapterEventsTable extends ChapterEvents
         DriftSqlType.int,
         data['${effectivePrefix}chapter_id'],
       )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
       outline: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}outline'],
@@ -2057,6 +2078,7 @@ class $ChapterEventsTable extends ChapterEvents
 class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
   final int id;
   final int chapterId;
+  final String name;
   final String outline;
   final String content;
 
@@ -2067,6 +2089,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
   const ChapterEvent({
     required this.id,
     required this.chapterId,
+    required this.name,
     required this.outline,
     required this.content,
     required this.chatLog,
@@ -2078,6 +2101,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['chapter_id'] = Variable<int>(chapterId);
+    map['name'] = Variable<String>(name);
     map['outline'] = Variable<String>(outline);
     map['content'] = Variable<String>(content);
     map['chat_log'] = Variable<String>(chatLog);
@@ -2090,6 +2114,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
     return ChapterEventsCompanion(
       id: Value(id),
       chapterId: Value(chapterId),
+      name: Value(name),
       outline: Value(outline),
       content: Value(content),
       chatLog: Value(chatLog),
@@ -2106,6 +2131,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
     return ChapterEvent(
       id: serializer.fromJson<int>(json['id']),
       chapterId: serializer.fromJson<int>(json['chapterId']),
+      name: serializer.fromJson<String>(json['name']),
       outline: serializer.fromJson<String>(json['outline']),
       content: serializer.fromJson<String>(json['content']),
       chatLog: serializer.fromJson<String>(json['chatLog']),
@@ -2119,6 +2145,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'chapterId': serializer.toJson<int>(chapterId),
+      'name': serializer.toJson<String>(name),
       'outline': serializer.toJson<String>(outline),
       'content': serializer.toJson<String>(content),
       'chatLog': serializer.toJson<String>(chatLog),
@@ -2130,6 +2157,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
   ChapterEvent copyWith({
     int? id,
     int? chapterId,
+    String? name,
     String? outline,
     String? content,
     String? chatLog,
@@ -2138,6 +2166,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
   }) => ChapterEvent(
     id: id ?? this.id,
     chapterId: chapterId ?? this.chapterId,
+    name: name ?? this.name,
     outline: outline ?? this.outline,
     content: content ?? this.content,
     chatLog: chatLog ?? this.chatLog,
@@ -2148,6 +2177,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
     return ChapterEvent(
       id: data.id.present ? data.id.value : this.id,
       chapterId: data.chapterId.present ? data.chapterId.value : this.chapterId,
+      name: data.name.present ? data.name.value : this.name,
       outline: data.outline.present ? data.outline.value : this.outline,
       content: data.content.present ? data.content.value : this.content,
       chatLog: data.chatLog.present ? data.chatLog.value : this.chatLog,
@@ -2161,6 +2191,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
     return (StringBuffer('ChapterEvent(')
           ..write('id: $id, ')
           ..write('chapterId: $chapterId, ')
+          ..write('name: $name, ')
           ..write('outline: $outline, ')
           ..write('content: $content, ')
           ..write('chatLog: $chatLog, ')
@@ -2174,6 +2205,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
   int get hashCode => Object.hash(
     id,
     chapterId,
+    name,
     outline,
     content,
     chatLog,
@@ -2186,6 +2218,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
       (other is ChapterEvent &&
           other.id == this.id &&
           other.chapterId == this.chapterId &&
+          other.name == this.name &&
           other.outline == this.outline &&
           other.content == this.content &&
           other.chatLog == this.chatLog &&
@@ -2196,6 +2229,7 @@ class ChapterEvent extends DataClass implements Insertable<ChapterEvent> {
 class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
   final Value<int> id;
   final Value<int> chapterId;
+  final Value<String> name;
   final Value<String> outline;
   final Value<String> content;
   final Value<String> chatLog;
@@ -2204,6 +2238,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
   const ChapterEventsCompanion({
     this.id = const Value.absent(),
     this.chapterId = const Value.absent(),
+    this.name = const Value.absent(),
     this.outline = const Value.absent(),
     this.content = const Value.absent(),
     this.chatLog = const Value.absent(),
@@ -2213,6 +2248,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
   ChapterEventsCompanion.insert({
     this.id = const Value.absent(),
     required int chapterId,
+    this.name = const Value.absent(),
     this.outline = const Value.absent(),
     this.content = const Value.absent(),
     this.chatLog = const Value.absent(),
@@ -2222,6 +2258,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
   static Insertable<ChapterEvent> custom({
     Expression<int>? id,
     Expression<int>? chapterId,
+    Expression<String>? name,
     Expression<String>? outline,
     Expression<String>? content,
     Expression<String>? chatLog,
@@ -2231,6 +2268,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (chapterId != null) 'chapter_id': chapterId,
+      if (name != null) 'name': name,
       if (outline != null) 'outline': outline,
       if (content != null) 'content': content,
       if (chatLog != null) 'chat_log': chatLog,
@@ -2242,6 +2280,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
   ChapterEventsCompanion copyWith({
     Value<int>? id,
     Value<int>? chapterId,
+    Value<String>? name,
     Value<String>? outline,
     Value<String>? content,
     Value<String>? chatLog,
@@ -2251,6 +2290,7 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
     return ChapterEventsCompanion(
       id: id ?? this.id,
       chapterId: chapterId ?? this.chapterId,
+      name: name ?? this.name,
       outline: outline ?? this.outline,
       content: content ?? this.content,
       chatLog: chatLog ?? this.chatLog,
@@ -2267,6 +2307,9 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
     }
     if (chapterId.present) {
       map['chapter_id'] = Variable<int>(chapterId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
     }
     if (outline.present) {
       map['outline'] = Variable<String>(outline.value);
@@ -2291,11 +2334,293 @@ class ChapterEventsCompanion extends UpdateCompanion<ChapterEvent> {
     return (StringBuffer('ChapterEventsCompanion(')
           ..write('id: $id, ')
           ..write('chapterId: $chapterId, ')
+          ..write('name: $name, ')
           ..write('outline: $outline, ')
           ..write('content: $content, ')
           ..write('chatLog: $chatLog, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SectionPlotsTable extends SectionPlots
+    with TableInfo<$SectionPlotsTable, SectionPlot> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SectionPlotsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _sectionIdMeta = const VerificationMeta(
+    'sectionId',
+  );
+  @override
+  late final GeneratedColumn<int> sectionId = GeneratedColumn<int>(
+    'section_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES chapter_events (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _plotEntryIdMeta = const VerificationMeta(
+    'plotEntryId',
+  );
+  @override
+  late final GeneratedColumn<int> plotEntryId = GeneratedColumn<int>(
+    'plot_entry_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES entries (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [sectionId, plotEntryId, position];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'section_plots';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SectionPlot> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('section_id')) {
+      context.handle(
+        _sectionIdMeta,
+        sectionId.isAcceptableOrUnknown(data['section_id']!, _sectionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sectionIdMeta);
+    }
+    if (data.containsKey('plot_entry_id')) {
+      context.handle(
+        _plotEntryIdMeta,
+        plotEntryId.isAcceptableOrUnknown(
+          data['plot_entry_id']!,
+          _plotEntryIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_plotEntryIdMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {sectionId, plotEntryId};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {plotEntryId},
+  ];
+  @override
+  SectionPlot map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SectionPlot(
+      sectionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}section_id'],
+      )!,
+      plotEntryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}plot_entry_id'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+    );
+  }
+
+  @override
+  $SectionPlotsTable createAlias(String alias) {
+    return $SectionPlotsTable(attachedDatabase, alias);
+  }
+}
+
+class SectionPlot extends DataClass implements Insertable<SectionPlot> {
+  final int sectionId;
+  final int plotEntryId;
+  final int position;
+  const SectionPlot({
+    required this.sectionId,
+    required this.plotEntryId,
+    required this.position,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['section_id'] = Variable<int>(sectionId);
+    map['plot_entry_id'] = Variable<int>(plotEntryId);
+    map['position'] = Variable<int>(position);
+    return map;
+  }
+
+  SectionPlotsCompanion toCompanion(bool nullToAbsent) {
+    return SectionPlotsCompanion(
+      sectionId: Value(sectionId),
+      plotEntryId: Value(plotEntryId),
+      position: Value(position),
+    );
+  }
+
+  factory SectionPlot.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SectionPlot(
+      sectionId: serializer.fromJson<int>(json['sectionId']),
+      plotEntryId: serializer.fromJson<int>(json['plotEntryId']),
+      position: serializer.fromJson<int>(json['position']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'sectionId': serializer.toJson<int>(sectionId),
+      'plotEntryId': serializer.toJson<int>(plotEntryId),
+      'position': serializer.toJson<int>(position),
+    };
+  }
+
+  SectionPlot copyWith({int? sectionId, int? plotEntryId, int? position}) =>
+      SectionPlot(
+        sectionId: sectionId ?? this.sectionId,
+        plotEntryId: plotEntryId ?? this.plotEntryId,
+        position: position ?? this.position,
+      );
+  SectionPlot copyWithCompanion(SectionPlotsCompanion data) {
+    return SectionPlot(
+      sectionId: data.sectionId.present ? data.sectionId.value : this.sectionId,
+      plotEntryId: data.plotEntryId.present
+          ? data.plotEntryId.value
+          : this.plotEntryId,
+      position: data.position.present ? data.position.value : this.position,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SectionPlot(')
+          ..write('sectionId: $sectionId, ')
+          ..write('plotEntryId: $plotEntryId, ')
+          ..write('position: $position')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(sectionId, plotEntryId, position);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SectionPlot &&
+          other.sectionId == this.sectionId &&
+          other.plotEntryId == this.plotEntryId &&
+          other.position == this.position);
+}
+
+class SectionPlotsCompanion extends UpdateCompanion<SectionPlot> {
+  final Value<int> sectionId;
+  final Value<int> plotEntryId;
+  final Value<int> position;
+  final Value<int> rowid;
+  const SectionPlotsCompanion({
+    this.sectionId = const Value.absent(),
+    this.plotEntryId = const Value.absent(),
+    this.position = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SectionPlotsCompanion.insert({
+    required int sectionId,
+    required int plotEntryId,
+    required int position,
+    this.rowid = const Value.absent(),
+  }) : sectionId = Value(sectionId),
+       plotEntryId = Value(plotEntryId),
+       position = Value(position);
+  static Insertable<SectionPlot> custom({
+    Expression<int>? sectionId,
+    Expression<int>? plotEntryId,
+    Expression<int>? position,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (sectionId != null) 'section_id': sectionId,
+      if (plotEntryId != null) 'plot_entry_id': plotEntryId,
+      if (position != null) 'position': position,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SectionPlotsCompanion copyWith({
+    Value<int>? sectionId,
+    Value<int>? plotEntryId,
+    Value<int>? position,
+    Value<int>? rowid,
+  }) {
+    return SectionPlotsCompanion(
+      sectionId: sectionId ?? this.sectionId,
+      plotEntryId: plotEntryId ?? this.plotEntryId,
+      position: position ?? this.position,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (sectionId.present) {
+      map['section_id'] = Variable<int>(sectionId.value);
+    }
+    if (plotEntryId.present) {
+      map['plot_entry_id'] = Variable<int>(plotEntryId.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SectionPlotsCompanion(')
+          ..write('sectionId: $sectionId, ')
+          ..write('plotEntryId: $plotEntryId, ')
+          ..write('position: $position, ')
+          ..write('rowid: $rowid')
           ..write(')'))
         .toString();
   }
@@ -2310,6 +2635,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $EntrySetsTable entrySets = $EntrySetsTable(this);
   late final $ChaptersTable chapters = $ChaptersTable(this);
   late final $ChapterEventsTable chapterEvents = $ChapterEventsTable(this);
+  late final $SectionPlotsTable sectionPlots = $SectionPlotsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2321,6 +2647,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     entrySets,
     chapters,
     chapterEvents,
+    sectionPlots,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -2365,6 +2692,20 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('chapter_events', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'chapter_events',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('section_plots', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'entries',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('section_plots', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -2919,6 +3260,24 @@ final class $$EntriesTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$SectionPlotsTable, List<SectionPlot>>
+  _sectionPlotsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.sectionPlots,
+    aliasName: 'entries__id__section_plots__plot_entry_id',
+  );
+
+  $$SectionPlotsTableProcessedTableManager get sectionPlotsRefs {
+    final manager = $$SectionPlotsTableTableManager(
+      $_db,
+      $_db.sectionPlots,
+    ).filter((f) => f.plotEntryId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_sectionPlotsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$EntriesTableFilterComposer
@@ -2986,6 +3345,31 @@ class $$EntriesTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> sectionPlotsRefs(
+    Expression<bool> Function($$SectionPlotsTableFilterComposer f) f,
+  ) {
+    final $$SectionPlotsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.sectionPlots,
+      getReferencedColumn: (t) => t.plotEntryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SectionPlotsTableFilterComposer(
+            $db: $db,
+            $table: $db.sectionPlots,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 }
 
@@ -3109,6 +3493,31 @@ class $$EntriesTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> sectionPlotsRefs<T extends Object>(
+    Expression<T> Function($$SectionPlotsTableAnnotationComposer a) f,
+  ) {
+    final $$SectionPlotsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.sectionPlots,
+      getReferencedColumn: (t) => t.plotEntryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SectionPlotsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sectionPlots,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$EntriesTableTableManager
@@ -3124,7 +3533,7 @@ class $$EntriesTableTableManager
           $$EntriesTableUpdateCompanionBuilder,
           (Entry, $$EntriesTableReferences),
           Entry,
-          PrefetchHooks Function({bool novelId})
+          PrefetchHooks Function({bool novelId, bool sectionPlotsRefs})
         > {
   $$EntriesTableTableManager(_$AppDatabase db, $EntriesTable table)
     : super(
@@ -3185,10 +3594,10 @@ class $$EntriesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({novelId = false}) {
+          prefetchHooksCallback: ({novelId = false, sectionPlotsRefs = false}) {
             return PrefetchHooks(
               db: db,
-              explicitlyWatchedTables: [],
+              explicitlyWatchedTables: [if (sectionPlotsRefs) db.sectionPlots],
               addJoins:
                   <
                     T extends TableManagerState<
@@ -3222,7 +3631,28 @@ class $$EntriesTableTableManager
                     return state;
                   },
               getPrefetchedDataCallback: (items) async {
-                return [];
+                return [
+                  if (sectionPlotsRefs)
+                    await $_getPrefetchedData<
+                      Entry,
+                      $EntriesTable,
+                      SectionPlot
+                    >(
+                      currentTable: table,
+                      referencedTable: $$EntriesTableReferences
+                          ._sectionPlotsRefsTable(db),
+                      managerFromTypedResult: (p0) => $$EntriesTableReferences(
+                        db,
+                        table,
+                        p0,
+                      ).sectionPlotsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where(
+                            (e) => e.plotEntryId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
               },
             );
           },
@@ -3242,7 +3672,7 @@ typedef $$EntriesTableProcessedTableManager =
       $$EntriesTableUpdateCompanionBuilder,
       (Entry, $$EntriesTableReferences),
       Entry,
-      PrefetchHooks Function({bool novelId})
+      PrefetchHooks Function({bool novelId, bool sectionPlotsRefs})
     >;
 typedef $$EntryLinksTableCreateCompanionBuilder =
     EntryLinksCompanion Function({
@@ -4322,6 +4752,7 @@ typedef $$ChapterEventsTableCreateCompanionBuilder =
     ChapterEventsCompanion Function({
       Value<int> id,
       required int chapterId,
+      Value<String> name,
       Value<String> outline,
       Value<String> content,
       Value<String> chatLog,
@@ -4332,6 +4763,7 @@ typedef $$ChapterEventsTableUpdateCompanionBuilder =
     ChapterEventsCompanion Function({
       Value<int> id,
       Value<int> chapterId,
+      Value<String> name,
       Value<String> outline,
       Value<String> content,
       Value<String> chatLog,
@@ -4363,6 +4795,24 @@ final class $$ChapterEventsTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$SectionPlotsTable, List<SectionPlot>>
+  _sectionPlotsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.sectionPlots,
+    aliasName: 'chapter_events__id__section_plots__section_id',
+  );
+
+  $$SectionPlotsTableProcessedTableManager get sectionPlotsRefs {
+    final manager = $$SectionPlotsTableTableManager(
+      $_db,
+      $_db.sectionPlots,
+    ).filter((f) => f.sectionId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_sectionPlotsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$ChapterEventsTableFilterComposer
@@ -4376,6 +4826,11 @@ class $$ChapterEventsTableFilterComposer
   });
   ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4426,6 +4881,31 @@ class $$ChapterEventsTableFilterComposer
     );
     return composer;
   }
+
+  Expression<bool> sectionPlotsRefs(
+    Expression<bool> Function($$SectionPlotsTableFilterComposer f) f,
+  ) {
+    final $$SectionPlotsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.sectionPlots,
+      getReferencedColumn: (t) => t.sectionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SectionPlotsTableFilterComposer(
+            $db: $db,
+            $table: $db.sectionPlots,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ChapterEventsTableOrderingComposer
@@ -4439,6 +4919,11 @@ class $$ChapterEventsTableOrderingComposer
   });
   ColumnOrderings<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -4503,6 +4988,9 @@ class $$ChapterEventsTableAnnotationComposer
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
   GeneratedColumn<String> get outline =>
       $composableBuilder(column: $table.outline, builder: (column) => column);
 
@@ -4540,6 +5028,31 @@ class $$ChapterEventsTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> sectionPlotsRefs<T extends Object>(
+    Expression<T> Function($$SectionPlotsTableAnnotationComposer a) f,
+  ) {
+    final $$SectionPlotsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.sectionPlots,
+      getReferencedColumn: (t) => t.sectionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SectionPlotsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sectionPlots,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ChapterEventsTableTableManager
@@ -4555,7 +5068,7 @@ class $$ChapterEventsTableTableManager
           $$ChapterEventsTableUpdateCompanionBuilder,
           (ChapterEvent, $$ChapterEventsTableReferences),
           ChapterEvent,
-          PrefetchHooks Function({bool chapterId})
+          PrefetchHooks Function({bool chapterId, bool sectionPlotsRefs})
         > {
   $$ChapterEventsTableTableManager(_$AppDatabase db, $ChapterEventsTable table)
     : super(
@@ -4572,6 +5085,7 @@ class $$ChapterEventsTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<int> chapterId = const Value.absent(),
+                Value<String> name = const Value.absent(),
                 Value<String> outline = const Value.absent(),
                 Value<String> content = const Value.absent(),
                 Value<String> chatLog = const Value.absent(),
@@ -4580,6 +5094,7 @@ class $$ChapterEventsTableTableManager
               }) => ChapterEventsCompanion(
                 id: id,
                 chapterId: chapterId,
+                name: name,
                 outline: outline,
                 content: content,
                 chatLog: chatLog,
@@ -4590,6 +5105,7 @@ class $$ChapterEventsTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 required int chapterId,
+                Value<String> name = const Value.absent(),
                 Value<String> outline = const Value.absent(),
                 Value<String> content = const Value.absent(),
                 Value<String> chatLog = const Value.absent(),
@@ -4598,6 +5114,7 @@ class $$ChapterEventsTableTableManager
               }) => ChapterEventsCompanion.insert(
                 id: id,
                 chapterId: chapterId,
+                name: name,
                 outline: outline,
                 content: content,
                 chatLog: chatLog,
@@ -4612,7 +5129,387 @@ class $$ChapterEventsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({chapterId = false}) {
+          prefetchHooksCallback:
+              ({chapterId = false, sectionPlotsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (sectionPlotsRefs) db.sectionPlots,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (chapterId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.chapterId,
+                                    referencedTable:
+                                        $$ChapterEventsTableReferences
+                                            ._chapterIdTable(db),
+                                    referencedColumn:
+                                        $$ChapterEventsTableReferences
+                                            ._chapterIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (sectionPlotsRefs)
+                        await $_getPrefetchedData<
+                          ChapterEvent,
+                          $ChapterEventsTable,
+                          SectionPlot
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ChapterEventsTableReferences
+                              ._sectionPlotsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ChapterEventsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).sectionPlotsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.sectionId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$ChapterEventsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ChapterEventsTable,
+      ChapterEvent,
+      $$ChapterEventsTableFilterComposer,
+      $$ChapterEventsTableOrderingComposer,
+      $$ChapterEventsTableAnnotationComposer,
+      $$ChapterEventsTableCreateCompanionBuilder,
+      $$ChapterEventsTableUpdateCompanionBuilder,
+      (ChapterEvent, $$ChapterEventsTableReferences),
+      ChapterEvent,
+      PrefetchHooks Function({bool chapterId, bool sectionPlotsRefs})
+    >;
+typedef $$SectionPlotsTableCreateCompanionBuilder =
+    SectionPlotsCompanion Function({
+      required int sectionId,
+      required int plotEntryId,
+      required int position,
+      Value<int> rowid,
+    });
+typedef $$SectionPlotsTableUpdateCompanionBuilder =
+    SectionPlotsCompanion Function({
+      Value<int> sectionId,
+      Value<int> plotEntryId,
+      Value<int> position,
+      Value<int> rowid,
+    });
+
+final class $$SectionPlotsTableReferences
+    extends BaseReferences<_$AppDatabase, $SectionPlotsTable, SectionPlot> {
+  $$SectionPlotsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $ChapterEventsTable _sectionIdTable(_$AppDatabase db) => db
+      .chapterEvents
+      .createAlias('section_plots__section_id__chapter_events__id');
+
+  $$ChapterEventsTableProcessedTableManager get sectionId {
+    final $_column = $_itemColumn<int>('section_id')!;
+
+    final manager = $$ChapterEventsTableTableManager(
+      $_db,
+      $_db.chapterEvents,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_sectionIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $EntriesTable _plotEntryIdTable(_$AppDatabase db) =>
+      db.entries.createAlias('section_plots__plot_entry_id__entries__id');
+
+  $$EntriesTableProcessedTableManager get plotEntryId {
+    final $_column = $_itemColumn<int>('plot_entry_id')!;
+
+    final manager = $$EntriesTableTableManager(
+      $_db,
+      $_db.entries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_plotEntryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$SectionPlotsTableFilterComposer
+    extends Composer<_$AppDatabase, $SectionPlotsTable> {
+  $$SectionPlotsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ChapterEventsTableFilterComposer get sectionId {
+    final $$ChapterEventsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sectionId,
+      referencedTable: $db.chapterEvents,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChapterEventsTableFilterComposer(
+            $db: $db,
+            $table: $db.chapterEvents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$EntriesTableFilterComposer get plotEntryId {
+    final $$EntriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.plotEntryId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableFilterComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SectionPlotsTableOrderingComposer
+    extends Composer<_$AppDatabase, $SectionPlotsTable> {
+  $$SectionPlotsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ChapterEventsTableOrderingComposer get sectionId {
+    final $$ChapterEventsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sectionId,
+      referencedTable: $db.chapterEvents,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChapterEventsTableOrderingComposer(
+            $db: $db,
+            $table: $db.chapterEvents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$EntriesTableOrderingComposer get plotEntryId {
+    final $$EntriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.plotEntryId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SectionPlotsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SectionPlotsTable> {
+  $$SectionPlotsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  $$ChapterEventsTableAnnotationComposer get sectionId {
+    final $$ChapterEventsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sectionId,
+      referencedTable: $db.chapterEvents,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChapterEventsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.chapterEvents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$EntriesTableAnnotationComposer get plotEntryId {
+    final $$EntriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.plotEntryId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$SectionPlotsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SectionPlotsTable,
+          SectionPlot,
+          $$SectionPlotsTableFilterComposer,
+          $$SectionPlotsTableOrderingComposer,
+          $$SectionPlotsTableAnnotationComposer,
+          $$SectionPlotsTableCreateCompanionBuilder,
+          $$SectionPlotsTableUpdateCompanionBuilder,
+          (SectionPlot, $$SectionPlotsTableReferences),
+          SectionPlot,
+          PrefetchHooks Function({bool sectionId, bool plotEntryId})
+        > {
+  $$SectionPlotsTableTableManager(_$AppDatabase db, $SectionPlotsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SectionPlotsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SectionPlotsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SectionPlotsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> sectionId = const Value.absent(),
+                Value<int> plotEntryId = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SectionPlotsCompanion(
+                sectionId: sectionId,
+                plotEntryId: plotEntryId,
+                position: position,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required int sectionId,
+                required int plotEntryId,
+                required int position,
+                Value<int> rowid = const Value.absent(),
+              }) => SectionPlotsCompanion.insert(
+                sectionId: sectionId,
+                plotEntryId: plotEntryId,
+                position: position,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$SectionPlotsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({sectionId = false, plotEntryId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
@@ -4632,15 +5529,28 @@ class $$ChapterEventsTableTableManager
                       dynamic
                     >
                   >(state) {
-                    if (chapterId) {
+                    if (sectionId) {
                       state =
                           state.withJoin(
                                 currentTable: table,
-                                currentColumn: table.chapterId,
-                                referencedTable: $$ChapterEventsTableReferences
-                                    ._chapterIdTable(db),
-                                referencedColumn: $$ChapterEventsTableReferences
-                                    ._chapterIdTable(db)
+                                currentColumn: table.sectionId,
+                                referencedTable: $$SectionPlotsTableReferences
+                                    ._sectionIdTable(db),
+                                referencedColumn: $$SectionPlotsTableReferences
+                                    ._sectionIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+                    if (plotEntryId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.plotEntryId,
+                                referencedTable: $$SectionPlotsTableReferences
+                                    ._plotEntryIdTable(db),
+                                referencedColumn: $$SectionPlotsTableReferences
+                                    ._plotEntryIdTable(db)
                                     .id,
                               )
                               as T;
@@ -4657,19 +5567,19 @@ class $$ChapterEventsTableTableManager
       );
 }
 
-typedef $$ChapterEventsTableProcessedTableManager =
+typedef $$SectionPlotsTableProcessedTableManager =
     ProcessedTableManager<
       _$AppDatabase,
-      $ChapterEventsTable,
-      ChapterEvent,
-      $$ChapterEventsTableFilterComposer,
-      $$ChapterEventsTableOrderingComposer,
-      $$ChapterEventsTableAnnotationComposer,
-      $$ChapterEventsTableCreateCompanionBuilder,
-      $$ChapterEventsTableUpdateCompanionBuilder,
-      (ChapterEvent, $$ChapterEventsTableReferences),
-      ChapterEvent,
-      PrefetchHooks Function({bool chapterId})
+      $SectionPlotsTable,
+      SectionPlot,
+      $$SectionPlotsTableFilterComposer,
+      $$SectionPlotsTableOrderingComposer,
+      $$SectionPlotsTableAnnotationComposer,
+      $$SectionPlotsTableCreateCompanionBuilder,
+      $$SectionPlotsTableUpdateCompanionBuilder,
+      (SectionPlot, $$SectionPlotsTableReferences),
+      SectionPlot,
+      PrefetchHooks Function({bool sectionId, bool plotEntryId})
     >;
 
 class $AppDatabaseManager {
@@ -4687,4 +5597,6 @@ class $AppDatabaseManager {
       $$ChaptersTableTableManager(_db, _db.chapters);
   $$ChapterEventsTableTableManager get chapterEvents =>
       $$ChapterEventsTableTableManager(_db, _db.chapterEvents);
+  $$SectionPlotsTableTableManager get sectionPlots =>
+      $$SectionPlotsTableTableManager(_db, _db.sectionPlots);
 }

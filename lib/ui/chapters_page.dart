@@ -50,7 +50,7 @@ class ChaptersView extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('删除《${chapter.title}》?'),
-        content: const Text('本章的全部事件与内容会一并删除,不可恢复。'),
+        content: const Text('本章的全部小节与内容会一并删除,不可恢复。'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),

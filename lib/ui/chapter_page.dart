@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../data/db.dart';
 import 'event_edit_page.dart';
 
-/// 章节页:事件流
+/// 章节页:小节流
 class ChapterPage extends StatelessWidget {
   const ChapterPage(
       {super.key,
@@ -37,13 +37,15 @@ class ChapterPage extends StatelessWidget {
     );
   }
 
-  /// 章节全文 = 各事件内容拼接;章节大纲 = 各事件大纲拼接
+  /// 章节全文 = 各小节内容拼接;章节大纲 = 各小节大纲拼接
   Future<void> _showFullText(BuildContext context,
       {required bool outline}) async {
     final events = await db.eventsOf(chapter.id);
     final text = [
-      for (final e in events)
-        outline ? e.outline.trim() : e.content.trim()
+      for (final (i, e) in events.indexed)
+        if ((outline ? e.outline : e.content).trim().isNotEmpty)
+          '${e.name.trim().isEmpty ? '小节 ${i + 1}' : e.name.trim()}\n'
+          '${(outline ? e.outline : e.content).trim()}'
     ].where((s) => s.isNotEmpty).join('\n\n');
     if (!context.mounted) return;
     showDialog(
@@ -97,7 +99,7 @@ class ChapterPage extends StatelessWidget {
           final events = snapshot.data ?? const [];
           if (events.isEmpty) {
             return const Center(
-                child: Text('还没有事件,点右下角添加\n每个事件 = 一段大纲 + 生成的正文',
+                child: Text('还没有小节,点右下角添加\n每个小节 = 名称 + 大纲 + 正文',
                     textAlign: TextAlign.center));
           }
           return ListView.builder(
@@ -112,10 +114,12 @@ class ChapterPage extends StatelessWidget {
                     radius: 14,
                     child: Text('${i + 1}', style: const TextStyle(fontSize: 13)),
                   ),
-                  title: Text(e.outline.isEmpty ? '(未写大纲)' : e.outline,
-                      maxLines: 2, overflow: TextOverflow.ellipsis),
+                  title: Text(e.name.trim().isEmpty ? '小节 ${i + 1}' : e.name),
                   subtitle: Text(
-                    hasContent ? '${e.content.trim().length} 字' : '正文未生成',
+                    '${e.outline.trim().isEmpty ? '未写大纲' : e.outline.trim()} · '
+                    '${hasContent ? '${e.content.trim().length} 字' : '正文未生成'}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         color: hasContent
                             ? null
@@ -142,7 +146,7 @@ class ChapterPage extends StatelessWidget {
           if (context.mounted) _openEvent(context, all: events);
         },
         icon: const Icon(Icons.add),
-        label: const Text('添加事件'),
+        label: const Text('添加小节'),
       ),
     );
   }

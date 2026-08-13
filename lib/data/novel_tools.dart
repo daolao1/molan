@@ -38,7 +38,7 @@ const novelToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'list_chapters',
-      'description': '全书章节与事件目录:每章标题及其事件序号、大纲、字数',
+      'description': '全书章节与小节目录:每章标题及其小节序号、名称、大纲、字数',
       'parameters': {'type': 'object', 'properties': <String, dynamic>{}},
     },
   },
@@ -46,12 +46,12 @@ const novelToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'get_event_content',
-      'description': '读取某章某事件的正文(序号见 list_chapters);过长会截断',
+      'description': '读取某章某小节的正文(序号见 list_chapters);过长会截断',
       'parameters': {
         'type': 'object',
         'properties': {
           'chapter': {'type': 'integer', 'description': '章节序号,从 1 起'},
-          'event': {'type': 'integer', 'description': '事件序号,从 1 起'},
+          'event': {'type': 'integer', 'description': '小节序号,从 1 起'},
         },
         'required': ['chapter', 'event'],
       },
@@ -98,7 +98,7 @@ class NovelToolExecutor {
         final o = events[i].outline.trim();
         final len = events[i].content.length;
         buf.writeln(
-            '  事件 ${i + 1}(${len > 0 ? '$len 字' : '无正文'}):${o.isEmpty ? '(无大纲)' : o}');
+            '  小节 ${i + 1}「${events[i].name.trim().isEmpty ? '未命名' : events[i].name}」(${len > 0 ? '$len 字' : '无正文'}):${o.isEmpty ? '(无大纲)' : o}');
       }
     }
     return buf.toString().trimRight();
@@ -113,16 +113,16 @@ class NovelToolExecutor {
     }
     final events = await db.eventsOf(chapters[c - 1].id);
     if (ev < 1 || ev > events.length) {
-      return '失败:事件序号 $ev 越界(该章共 ${events.length} 个事件)';
+      return '失败:小节序号 $ev 越界(该章共 ${events.length} 个小节)';
     }
     final e = events[ev - 1];
     final content = e.content.trim();
-    if (content.isEmpty) return '(该事件还没有正文)大纲:${e.outline}';
+    if (content.isEmpty) return '(该小节还没有正文)大纲:${e.outline}';
     const cap = 4000;
     final body = content.length <= cap
         ? content
         : '${content.substring(0, cap)}\n…(已截断,全文共 ${content.length} 字)';
-    return '第 $c 章《${chapters[c - 1].title}》事件 $ev\n大纲:${e.outline}\n正文:\n$body';
+    return '第 $c 章《${chapters[c - 1].title}》小节 $ev「${e.name}」\n大纲:${e.outline}\n正文:\n$body';
   }
 
   Future<String> _entryDetail(String name) async {

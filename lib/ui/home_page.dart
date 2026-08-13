@@ -53,7 +53,7 @@ class HomePage extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('删除《${novel.title}》?'),
-        content: const Text('该小说下的所有人物、地点、物品、场景都会一并删除,不可恢复。'),
+        content: const Text('该小说下的所有人物、地点、物品、场景、情节和设定都会一并删除,不可恢复。'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),

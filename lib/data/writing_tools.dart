@@ -15,7 +15,7 @@ final writingToolSchemas = [
     'function': {
       'name': 'read_content',
       'description':
-          '读取当前事件正文全文,每行带行号前缀"N| ";末尾附作者当前高亮(如有);修改前必须先读,replace_text 的原文不含行号前缀',
+          '读取当前小节正文全文,每行带行号前缀"N| ";末尾附作者当前高亮(如有);修改前必须先读,replace_text 的原文不含行号前缀',
       'parameters': {'type': 'object', 'properties': <String, dynamic>{}},
     },
   },
@@ -83,7 +83,7 @@ final writingToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'read_outline',
-      'description': '读取当前事件的大纲',
+      'description': '读取当前小节的大纲',
       'parameters': {'type': 'object', 'properties': <String, dynamic>{}},
     },
   },
@@ -91,7 +91,7 @@ final writingToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'set_outline',
-      'description': '更新当前事件的大纲(情节变化后同步,或按作者要求调整)',
+      'description': '更新当前小节的大纲(情节变化后同步,或按作者要求调整)',
       'parameters': {
         'type': 'object',
         'properties': {

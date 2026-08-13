@@ -13,6 +13,8 @@ String writingAgentSystem({
   required List<Entry> allEntries,
   required List<EntryLink> links,
   required String chapterTitle,
+  required String sectionName,
+  List<String> sectionPlots = const [],
   required List<String> priorOutlines,
   List<String> followingOutlines = const [],
   required String prevContentTail,
@@ -20,7 +22,7 @@ String writingAgentSystem({
   List<Entry> styleEntries = const [],
 }) =>
     '''
-你是这部小说的写作搭档,与作者多轮对话协作,用工具直接管理当前事件的正文、大纲与设定库。
+你是这部小说的写作搭档,与作者多轮对话协作,用工具直接管理当前小节的正文、大纲与设定库。
 
 行为准则:
 - 改动一律通过工具落实,不要把正文粘贴在回复里;只回复不动手是不可接受的
@@ -40,10 +42,12 @@ ${styleEntries.map((e) => '■ ${e.name}\n${styleEntryFullText(e)}').join('\n\n'
 【小说】《${novel.title}》${novel.description.isEmpty ? '' : ':${novel.description}'}
 ${_novelContext(allEntries, links)}
 【当前章节】$chapterTitle
-【本章此前事件大纲】${priorOutlines.isEmpty ? '(本事件是本章第一个事件)' : '\n${priorOutlines.map((o) => '- $o').join('\n')}'}
-【本章后续事件大纲】${followingOutlines.isEmpty ? '(暂无,本事件是本章最后一个)' : '\n${followingOutlines.map((o) => '- $o').join('\n')}'}
+【当前小节】${sectionName.trim().isEmpty ? '(未命名)' : sectionName.trim()}
+【本节情节】${sectionPlots.isEmpty ? '(暂无,可依作者对话意图安排)' : '\n${sectionPlots.indexed.map((p) => '${p.$1 + 1}. ${p.$2}').join('\n')}'}
+【本章此前小节大纲】${priorOutlines.isEmpty ? '(本小节是本章第一个小节)' : '\n${priorOutlines.map((o) => '- $o').join('\n')}'}
+【本章后续小节大纲】${followingOutlines.isEmpty ? '(暂无,本小节是本章最后一个)' : '\n${followingOutlines.map((o) => '- $o').join('\n')}'}
 【前文结尾】${prevContentTail.isEmpty ? '(无)' : '\n…$prevContentTail'}
-【当前事件大纲】${outline.trim().isEmpty ? '(暂无,可依作者对话意图写作)' : outline.trim()}
+【当前小节大纲】${outline.trim().isEmpty ? '(暂无,可依作者对话意图写作)' : outline.trim()}
 ''';
 
 /// 挂载文风卡的全文(所有非空字段拼接)
@@ -66,9 +70,9 @@ const compressChatSystem = '''
 - 尚未完成的事项
 只输出备忘内容,中文。''';
 
-/// 从正文整理事件大纲
+/// 从正文整理小节大纲
 const outlineFromContentSystem = '''
-阅读事件正文,提炼一段简洁的事件大纲:谁、在哪、做了什么、结果或转折。
+阅读小节正文,提炼一段简洁的小节大纲:谁、在哪、做了什么、结果或转折。
 只输出大纲文本,不要解释、标题或序号;中文。''';
 
 /// 把设定卡内容提炼为生图提示词:剔除叙事,只留视觉要素,英文输出
@@ -89,6 +93,7 @@ String assistantChangesSystem({bool withTools = false}) {
       : '';
   final kindFields = [
     for (final kind in EntryKind.values)
+      if (kind != EntryKind.plot)
       '${kind.name}(${kind.label}):${entryFieldsFor(kind).map((f) => '"${f.key}"(${f.label})').join('、')}'
   ].join('\n');
   return '''
@@ -148,7 +153,7 @@ String entryGenerationSystem(EntryKind kind,
 - 只输出一个 JSON 对象,禁止输出任何解释、前后缀或代码围栏
 - 可用的 key:"name"(名称)、$keys
 - 全部用中文撰写;内容具体、有画面感、可直接用于写作,避免空泛套话
-- 充分利用【现有设定】:与已有人物、地点、物品、场景建立合理的关联与呼应,严禁与现有设定矛盾$toolNote$relNote
+- 充分利用【现有设定】:与已有人物、地点、物品、场景、情节建立合理的关联与呼应,严禁与现有设定矛盾$toolNote$relNote
 - 单行字段控制在 30 字内,多行字段 50~150 字''';
   if (mode == GenerationMode.generate) {
     return '''
@@ -176,7 +181,7 @@ $common
 /// 每类条目注入上下文的数量上限(防止提示词过长)
 const _maxEntriesPerKind = 15;
 
-/// 现有设定摘要:五类条目 + 定向关联网
+/// 现有设定摘要:全部类型条目 + 定向关联网
 String _novelContext(List<Entry> allEntries, List<EntryLink> links) {
   final buf = StringBuffer();
   final nameOf = {for (final e in allEntries) e.id: e.name};
@@ -191,6 +196,7 @@ String _novelContext(List<Entry> allEntries, List<EntryLink> links) {
     (linksOf[l.fromEntryId] ??= []).add(brief);
   }
   for (final kind in EntryKind.values) {
+    if (kind == EntryKind.plot) continue;
     final list = [
       for (final e in allEntries)
         if (e.kind == kind.name) e

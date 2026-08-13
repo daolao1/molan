@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:flutter/material.dart' show IconData, Icons;
@@ -16,7 +18,7 @@ class Novels extends Table {
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
 
-/// 小说下的设定条目(人物/地点/物品/场景/设定)
+/// 小说下的设定条目(人物/地点/物品/场景/情节/设定等)
 class Entries extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get novelId =>
@@ -54,7 +56,7 @@ class EntrySets extends Table {
   TextColumn get entryIds => text().withDefault(const Constant(''))();
 }
 
-/// 章节:只有标题,内容由事件拼接
+/// 章节:只有标题,内容由小节拼接
 class Chapters extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get novelId =>
@@ -64,11 +66,12 @@ class Chapters extends Table {
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
 
-/// 章节内的事件:大纲驱动正文
+/// 章节内的小节:大纲驱动正文
 class ChapterEvents extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get chapterId =>
       integer().references(Chapters, #id, onDelete: KeyAction.cascade)();
+  TextColumn get name => text().withDefault(const Constant(''))();
   TextColumn get outline => text().withDefault(const Constant(''))();
   TextColumn get content => text().withDefault(const Constant(''))();
 
@@ -78,11 +81,29 @@ class ChapterEvents extends Table {
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// 小节内的有序情节;情节内容复用 Entries 中的 plot 卡
+class SectionPlots extends Table {
+  IntColumn get sectionId =>
+      integer().references(ChapterEvents, #id, onDelete: KeyAction.cascade)();
+  IntColumn get plotEntryId =>
+      integer().references(Entries, #id, onDelete: KeyAction.cascade)();
+  IntColumn get position => integer()();
+
+  @override
+  Set<Column> get primaryKey => {sectionId, plotEntryId};
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {plotEntryId}
+      ];
+}
+
 enum EntryKind {
   character('人物', Icons.person_outline),
   location('地点', Icons.place_outlined),
   item('物品', Icons.category_outlined),
   scene('场景', Icons.pin_drop_outlined),
+  plot('情节', Icons.timeline_outlined),
   lore('设定', Icons.public_outlined),
   foreshadow('伏笔', Icons.visibility_off_outlined);
 
@@ -92,7 +113,15 @@ enum EntryKind {
 }
 
 @DriftDatabase(
-    tables: [Novels, Entries, EntryLinks, EntrySets, Chapters, ChapterEvents])
+    tables: [
+      Novels,
+      Entries,
+      EntryLinks,
+      EntrySets,
+      Chapters,
+      ChapterEvents,
+      SectionPlots
+    ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
       : super(executor ??
@@ -105,7 +134,7 @@ class AppDatabase extends _$AppDatabase {
             ));
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 13;
 
   /// 迁移中断重跑时列可能已存在,跳过避免 duplicate column 崩库
   Future<void> _addColumnIfAbsent(
@@ -169,6 +198,12 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 11) {
             await _addColumnIfAbsent(m, entries, entries.imageData);
+          }
+          if (from < 12 && from >= 5) {
+            await _addColumnIfAbsent(m, chapterEvents, chapterEvents.name);
+          }
+          if (from < 13) {
+            await m.createTable(sectionPlots);
           }
         },
         beforeOpen: (details) async {
@@ -282,7 +317,7 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
-  // ---- 章节与事件 ----
+  // ---- 章节与小节 ----
   Stream<List<Chapter>> watchChapters(int novelId) => (select(chapters)
         ..where((t) => t.novelId.equals(novelId))
         ..orderBy([(t) => OrderingTerm.asc(t.id)]))
@@ -311,14 +346,15 @@ class AppDatabase extends _$AppDatabase {
         ..orderBy([(t) => OrderingTerm.asc(t.id)]))
       .get();
 
-  Future<int> createEvent(int chapterId, String outline) =>
+  Future<int> createEvent(int chapterId, String name, String outline) =>
       into(chapterEvents).insert(ChapterEventsCompanion.insert(
-          chapterId: chapterId, outline: Value(outline)));
+          chapterId: chapterId, name: Value(name), outline: Value(outline)));
 
   Future<void> updateEvent(int id,
-          {String? outline, String? content, String? chatLog}) =>
+          {String? name, String? outline, String? content, String? chatLog}) =>
       (update(chapterEvents)..where((t) => t.id.equals(id)))
           .write(ChapterEventsCompanion(
+        name: name == null ? const Value.absent() : Value(name),
         outline: outline == null ? const Value.absent() : Value(outline),
         content: content == null ? const Value.absent() : Value(content),
         chatLog: chatLog == null ? const Value.absent() : Value(chatLog),
@@ -327,6 +363,55 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> deleteEvent(int id) =>
       (delete(chapterEvents)..where((t) => t.id.equals(id))).go();
+
+  Future<List<Entry>> plotsOfEvent(int sectionId) async {
+    final q = select(sectionPlots).join([
+      innerJoin(entries, entries.id.equalsExp(sectionPlots.plotEntryId))
+    ])
+      ..where(sectionPlots.sectionId.equals(sectionId))
+      ..orderBy([OrderingTerm.asc(sectionPlots.position)]);
+    return [for (final row in await q.get()) row.readTable(entries)];
+  }
+
+  /// 尚未编排进任何小节的情节,供旧数据重新归档
+  Future<List<Entry>> unassignedPlotsOfNovel(int novelId) async {
+    final assigned = selectOnly(sectionPlots)..addColumns([sectionPlots.plotEntryId]);
+    return (select(entries)
+          ..where((t) =>
+              t.novelId.equals(novelId) &
+              t.kind.equals(EntryKind.plot.name) &
+              t.id.isNotInQuery(assigned))
+          ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+        .get();
+  }
+
+  /// 保存小节的完整情节编排;移除的专属情节同时删除
+  Future<void> replaceEventPlots(
+      int sectionId,
+      int novelId,
+      List<({int? id, String name, String description})> plots) async {
+    await transaction(() async {
+      final old = await plotsOfEvent(sectionId);
+      final kept = <int>{};
+      await (delete(sectionPlots)..where((t) => t.sectionId.equals(sectionId)))
+          .go();
+      for (final (position, plot) in plots.indexed) {
+        final content = jsonEncode({'description': plot.description});
+        final plotId = plot.id == null
+            ? await createEntry(novelId, EntryKind.plot, plot.name, content)
+            : plot.id!;
+        if (plot.id != null) await updateEntry(plotId, plot.name, content);
+        kept.add(plotId);
+        await into(sectionPlots).insert(SectionPlotsCompanion.insert(
+            sectionId: sectionId,
+            plotEntryId: plotId,
+            position: position));
+      }
+      for (final entry in old) {
+        if (!kept.contains(entry.id)) await deleteEntry(entry.id);
+      }
+    });
+  }
 
   Future<void> updateEntry(int id, String name, String content) =>
       (update(entries)..where((t) => t.id.equals(id))).write(EntriesCompanion(
@@ -355,7 +440,7 @@ class AppDatabase extends _$AppDatabase {
     String description,
     List<({String kind, String name, String content, int? parent})> entryRows,
     List<({int from, int to, String label})> linkRows,
-    List<({String title, List<({String outline, String content})> events})>
+    List<({String title, List<({String name, String outline, String content, List<int> plots})> events})>
         chapterRows,
   ) =>
       transaction(() async {
@@ -389,9 +474,17 @@ class AppDatabase extends _$AppDatabase {
         for (final c in chapterRows) {
           final chapterId = await createChapter(novelId, c.title);
           for (final e in c.events) {
-            final eventId = await createEvent(chapterId, e.outline);
+            final eventId = await createEvent(chapterId, e.name, e.outline);
             if (e.content.isNotEmpty) {
               await updateEvent(eventId, content: e.content);
+            }
+            for (final (position, plotIndex) in e.plots.indexed) {
+              if (plotIndex < 0 || plotIndex >= ids.length) continue;
+              if (entryRows[plotIndex].kind != EntryKind.plot.name) continue;
+              await into(sectionPlots).insert(SectionPlotsCompanion.insert(
+                  sectionId: eventId,
+                  plotEntryId: ids[plotIndex],
+                  position: position));
             }
           }
         }

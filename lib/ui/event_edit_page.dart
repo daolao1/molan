@@ -5,6 +5,7 @@ import 'dart:convert';
 
 import '../data/app_context.dart';
 import '../data/db.dart';
+import '../data/entry_fields.dart';
 import '../data/llm_client.dart';
 import '../data/novel_tools.dart';
 import '../data/prompts.dart';
@@ -12,7 +13,7 @@ import '../data/settings.dart';
 import '../data/writing_tools.dart';
 import 'widgets.dart';
 
-/// 事件编辑:大纲 + 正文 + 对话式写作 agent
+/// 小节编辑:名称 + 大纲 + 正文 + 对话式写作 agent
 class EventEditPage extends StatefulWidget {
   const EventEditPage(
       {super.key,
@@ -27,10 +28,10 @@ class EventEditPage extends StatefulWidget {
   final Novel novel;
   final Chapter chapter;
 
-  /// 本章中位于本事件之前的事件(供上下文)
+  /// 本章中位于本小节之前的小节(供上下文)
   final List<ChapterEvent> priorEvents;
 
-  /// 本章中位于本事件之后的事件(供前瞻)
+  /// 本章中位于本小节之后的小节(供前瞻)
   final List<ChapterEvent> followingEvents;
   final ChapterEvent? event;
 
@@ -100,11 +101,14 @@ class _EventEditPageState extends State<EventEditPage>
     });
   late final _outlineCtrl =
       TextEditingController(text: widget.event?.outline ?? '');
+  late final _nameCtrl = TextEditingController(text: widget.event?.name ?? '');
   late final _contentCtrl =
       HighlightController(text: widget.event?.content ?? '');
   final _chatCtrl = TextEditingController();
   final _chatScroll = ScrollController();
   final _chatFocus = FocusNode();
+  final List<({int? id, String name, String description})> _plots = [];
+  bool _plotsLoaded = false;
 
   /// LLM 会话(system + 全部轮次,含工具调用过程)
   final List<Map<String, dynamic>> _messages = [];
@@ -160,8 +164,8 @@ class _EventEditPageState extends State<EventEditPage>
 
   PageSnapshot _ctxProvider() => PageSnapshot(
         novelId: widget.novel.id,
-        detail: '正在编辑《${widget.novel.title}》章节《${widget.chapter.title}》的事件。\n'
-            '事件大纲:${_outlineCtrl.text}\n当前正文:\n${_contentCtrl.text}',
+        detail: '正在编辑《${widget.novel.title}》章节《${widget.chapter.title}》的小节「${_nameCtrl.text}」。\n'
+            '小节大纲:${_outlineCtrl.text}\n当前正文:\n${_contentCtrl.text}',
       );
 
   @override
@@ -170,6 +174,142 @@ class _EventEditPageState extends State<EventEditPage>
     AppContextRegistry.push(_ctxProvider);
     _contentCtrl.addListener(_trackSel);
     _restoreChat();
+    _loadPlots();
+  }
+
+  Future<void> _loadPlots() async {
+    final entries = widget.event == null
+        ? const <Entry>[]
+        : await widget.db.plotsOfEvent(widget.event!.id);
+    if (!mounted) return;
+    setState(() {
+      _plots
+        ..clear()
+        ..addAll([
+          for (final entry in entries)
+            (
+              id: entry.id,
+              name: entry.name,
+              description:
+                  parseEntryContent(entry.content)['description'] ?? '',
+            )
+        ]);
+      _plotsLoaded = true;
+    });
+  }
+
+  Future<({String name, String description})?> _plotDialog({
+    String name = '',
+    String description = '',
+  }) async {
+    final nameCtrl = TextEditingController(text: name);
+    final descriptionCtrl = TextEditingController(text: description);
+    final result = await showDialog<({String name, String description})>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(name.isEmpty ? '新增情节' : '编辑情节'),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(
+                    labelText: '情节名称 *', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descriptionCtrl,
+                minLines: 4,
+                maxLines: 8,
+                decoration: const InputDecoration(
+                    labelText: '描述 *',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder()),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              final n = nameCtrl.text.trim();
+              final d = descriptionCtrl.text.trim();
+              if (n.isEmpty || d.isEmpty) return;
+              Navigator.pop(context, (name: n, description: d));
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    nameCtrl.dispose();
+    descriptionCtrl.dispose();
+    return result;
+  }
+
+  Future<void> _addPlot() async {
+    final plot = await _plotDialog();
+    if (plot == null || !mounted) return;
+    setState(() {
+      _plots.add((id: null, name: plot.name, description: plot.description));
+      _dirty = true;
+    });
+  }
+
+  Future<void> _editPlot(int index) async {
+    final old = _plots[index];
+    final plot = await _plotDialog(
+        name: old.name, description: old.description);
+    if (plot == null || !mounted) return;
+    setState(() {
+      _plots[index] =
+          (id: old.id, name: plot.name, description: plot.description);
+      _dirty = true;
+    });
+  }
+
+  Future<void> _addExistingPlot() async {
+    final draftIds = {for (final plot in _plots) ?plot.id};
+    final entries = [
+      for (final entry
+          in await widget.db.unassignedPlotsOfNovel(widget.novel.id))
+        if (!draftIds.contains(entry.id)) entry
+    ];
+    if (!mounted) return;
+    final selected = await showDialog<Entry>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('添加未编排情节'),
+        children: entries.isEmpty
+            ? [const Padding(padding: EdgeInsets.all(16), child: Text('没有未编排情节'))]
+            : [
+                for (final entry in entries)
+                  SimpleDialogOption(
+                    onPressed: () => Navigator.pop(context, entry),
+                    child: ListTile(
+                      title: Text(entry.name),
+                      subtitle: Text(entrySubtitle(entry),
+                          maxLines: 2, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+              ],
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _plots.add((
+        id: selected.id,
+        name: selected.name,
+        description: parseEntryContent(selected.content)['description'] ?? '',
+      ));
+      _dirty = true;
+    });
   }
 
   /// 归档的历史会话:[{title, at, messages, ui}]
@@ -259,7 +399,7 @@ class _EventEditPageState extends State<EventEditPage>
         if (_archived.isNotEmpty) 'archived': _archived,
       });
 
-  /// 每轮对话后自动持久化(已入库的事件)
+  /// 每轮对话后自动持久化(已入库的小节)
   Future<void> _persistChat() async {
     final id = widget.event?.id;
     if (id == null) return;
@@ -273,6 +413,7 @@ class _EventEditPageState extends State<EventEditPage>
     AppContextRegistry.pop(_ctxProvider);
     _tab.dispose();
     _outlineCtrl.dispose();
+    _nameCtrl.dispose();
     _contentCtrl.dispose();
     _chatCtrl.dispose();
     _chatScroll.dispose();
@@ -301,7 +442,7 @@ class _EventEditPageState extends State<EventEditPage>
           if (e.outline.trim().isNotEmpty) e.outline.trim()
       ];
 
-  /// 前一个事件正文的结尾(衔接文风用)
+  /// 前一个小节正文的结尾(衔接文风用)
   String get _prevTail {
     for (final e in widget.priorEvents.reversed) {
       final c = e.content.trim();
@@ -353,6 +494,8 @@ class _EventEditPageState extends State<EventEditPage>
         allEntries: all,
         links: links,
         chapterTitle: widget.chapter.title,
+        sectionName: _nameCtrl.text,
+        sectionPlots: [for (final p in _plots) '${p.name}:${p.description}'],
         priorOutlines: _priorOutlines,
         followingOutlines: _followingOutlines,
         prevContentTail: _prevTail,
@@ -594,6 +737,12 @@ class _EventEditPageState extends State<EventEditPage>
       final range = endLine == startLine ? '第 $startLine 行' : '第 $startLine-$endLine 行';
       fullText = '$text\n\n【作者高亮的正文片段($range)】\n$selected';
       uiText = '$text\n（附高亮片段 $range）';
+    }
+    if (_plots.isNotEmpty) {
+      fullText = '$fullText\n\n【当前本节情节编排】\n${[
+        for (final (i, p) in _plots.indexed)
+          '${i + 1}. ${p.name}:${p.description}'
+      ].join('\n')}';
     }
     setState(() {
       _busy = true;
@@ -1054,17 +1203,31 @@ class _EventEditPageState extends State<EventEditPage>
   }
 
   Future<void> _save() async {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      _toast('请填写小节名称', error: true);
+      return;
+    }
+    if (!_plotsLoaded) {
+      _toast('情节仍在加载,请稍后保存', error: true);
+      return;
+    }
     final outline = _outlineCtrl.text.trim();
+    late final int sectionId;
     if (widget.event == null) {
-      final id = await widget.db.createEvent(widget.chapter.id, outline);
-      await widget.db.updateEvent(id,
+      sectionId = await widget.db.createEvent(widget.chapter.id, name, outline);
+      await widget.db.updateEvent(sectionId,
           content: _contentCtrl.text, chatLog: _encodeChat());
     } else {
-      await widget.db.updateEvent(widget.event!.id,
+      sectionId = widget.event!.id;
+      await widget.db.updateEvent(sectionId,
+          name: name,
           outline: outline,
           content: _contentCtrl.text,
           chatLog: _encodeChat());
     }
+    await widget.db.replaceEventPlots(
+        sectionId, widget.novel.id, List.of(_plots));
     if (mounted) Navigator.pop(context);
   }
 
@@ -1099,7 +1262,7 @@ class _EventEditPageState extends State<EventEditPage>
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(isNew ? '添加事件' : '编辑事件'),
+          title: Text(isNew ? '添加小节' : '编辑小节'),
           actions: [
             FilledButton.tonalIcon(
                 onPressed: _save,
@@ -1126,12 +1289,24 @@ class _EventEditPageState extends State<EventEditPage>
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                     children: [
                 TextField(
+                  controller: _nameCtrl,
+                  autofocus: isNew,
+                  maxLines: 1,
+                  onChanged: (_) => _dirty = true,
+                  decoration: const InputDecoration(
+                    labelText: '小节名称 *',
+                    hintText: '例:雪夜来客',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
                   controller: _outlineCtrl,
                   minLines: 2,
                   maxLines: 6,
                   onChanged: (_) => _dirty = true,
                   decoration: InputDecoration(
-                    labelText: '事件大纲',
+                    labelText: '小节大纲',
                     hintText: '可手写,或写完正文后点右侧“整理”',
                     alignLabelWithHint: true,
                     border: const OutlineInputBorder(),
@@ -1142,6 +1317,92 @@ class _EventEditPageState extends State<EventEditPage>
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text('本节情节',
+                          style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                    TextButton.icon(
+                      onPressed: _addExistingPlot,
+                      icon: const Icon(Icons.playlist_add, size: 18),
+                      label: const Text('添加已有'),
+                    ),
+                    FilledButton.tonalIcon(
+                      onPressed: _addPlot,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('新建情节'),
+                    ),
+                  ],
+                ),
+                if (!_plotsLoaded)
+                  const LinearProgressIndicator()
+                else if (_plots.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text('还没有情节,按叙事顺序添加后用于指导本节正文'),
+                  )
+                else
+                  for (final (i, plot) in _plots.indexed)
+                    Card(
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          radius: 14,
+                          child: Text('${i + 1}',
+                              style: const TextStyle(fontSize: 13)),
+                        ),
+                        title: Text(plot.name),
+                        subtitle: Text(plot.description,
+                            maxLines: 2, overflow: TextOverflow.ellipsis),
+                        onTap: () => _editPlot(i),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: '上移',
+                              onPressed: i == 0
+                                  ? null
+                                  : () => setState(() {
+                                        final item = _plots.removeAt(i);
+                                        _plots.insert(i - 1, item);
+                                        _dirty = true;
+                                      }),
+                              icon: const Icon(Icons.arrow_upward),
+                            ),
+                            IconButton(
+                              tooltip: '下移',
+                              onPressed: i == _plots.length - 1
+                                  ? null
+                                  : () => setState(() {
+                                        final item = _plots.removeAt(i);
+                                        _plots.insert(i + 1, item);
+                                        _dirty = true;
+                                      }),
+                              icon: const Icon(Icons.arrow_downward),
+                            ),
+                            PopupMenuButton<String>(
+                              tooltip: '情节操作',
+                              onSelected: (value) {
+                                if (value == 'edit') _editPlot(i);
+                                if (value == 'delete') {
+                                  setState(() {
+                                    _plots.removeAt(i);
+                                    _dirty = true;
+                                  });
+                                }
+                              },
+                              itemBuilder: (context) => const [
+                                PopupMenuItem(
+                                    value: 'edit', child: Text('编辑')),
+                                PopupMenuItem(
+                                    value: 'delete', child: Text('删除')),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                 const SizedBox(height: 12),
                 Listener(
                   // 记录按下位置,供“取消高亮”弹出菜单定位

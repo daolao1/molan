@@ -230,6 +230,7 @@ class _NovelPageState extends State<NovelPage>
             ? null
             : TabBar(
                 controller: _tab,
+                isScrollable: true,
                 tabs: [
                   for (final k in _kinds) Tab(text: k.label, icon: Icon(k.icon))
                 ],

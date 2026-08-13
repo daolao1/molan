@@ -101,10 +101,6 @@ class _ReadingViewState extends State<ReadingView> {
       stream: widget.db.watchEvents(current.id),
       builder: (context, snapshot) {
         final events = snapshot.data ?? const [];
-        final text = [
-          for (final e in events)
-            if (e.content.trim().isNotEmpty) e.content.trim()
-        ].join('\n\n');
         return SingleChildScrollView(
           controller: _scrollCtrl,
           child: Center(
@@ -118,13 +114,22 @@ class _ReadingViewState extends State<ReadingView> {
                     Text(current.title,
                         style: Theme.of(context).textTheme.headlineSmall),
                     const SizedBox(height: 20),
-                    if (text.isEmpty)
+                    if (events.every((e) => e.content.trim().isEmpty))
                       Text('(本章还没有正文)',
                           style: TextStyle(
                               color: Theme.of(context).colorScheme.outline))
                     else
-                      SelectableText(text,
-                          style: const TextStyle(fontSize: 17, height: 1.9)),
+                      for (final (i, e) in events.indexed)
+                        if (e.content.trim().isNotEmpty) ...[
+                          Text(
+                            e.name.trim().isEmpty ? '小节 ${i + 1}' : e.name,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 10),
+                          SelectableText(e.content.trim(),
+                              style: const TextStyle(fontSize: 17, height: 1.9)),
+                          const SizedBox(height: 28),
+                        ],
                     const SizedBox(height: 40),
                     Row(
                       children: [

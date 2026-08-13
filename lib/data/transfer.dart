@@ -23,7 +23,14 @@ class NovelTransfer {
           'title': c.title,
           'events': [
             for (final e in await db.eventsOf(c.id))
-              {'outline': e.outline, 'content': e.content}
+              {
+                'name': e.name,
+                'outline': e.outline,
+                'content': e.content,
+                'plots': [
+                  for (final p in await db.plotsOfEvent(e.id)) indexOf[p.id]
+                ].whereType<int>().toList(),
+              }
           ],
         }
     ];
@@ -116,8 +123,13 @@ class NovelTransfer {
               for (final e in (c['events'] as List? ?? []))
                 if (e is Map)
                   (
+                    name: e['name'] as String? ?? '',
                     outline: e['outline'] as String? ?? '',
                     content: e['content'] as String? ?? '',
+                    plots: [
+                      for (final p in (e['plots'] as List? ?? []))
+                        if (p is int) p
+                    ],
                   )
             ],
           )

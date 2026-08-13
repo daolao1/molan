@@ -871,7 +871,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
                     if (_links.isEmpty && _incomingLinks.isEmpty)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 8),
-                        child: Text('可关联人物、地点、物品、场景或设定,并写上关联描述'),
+                        child: Text('可关联人物、地点、物品、场景、情节或设定,并写上关联描述'),
                       ),
                     for (final (i, l) in _links.indexed)
                       if (_entryById(l.toId) case final e?)
