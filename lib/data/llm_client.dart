@@ -34,17 +34,18 @@ class LlmClient {
   }
 
   static Map<String, String> _headers(LlmSettings s) => {
-        'Content-Type': 'application/json',
-        if (s.apiKey.trim().isNotEmpty)
-          'Authorization': 'Bearer ${s.apiKey.trim()}',
-      };
+    'Content-Type': 'application/json',
+    if (s.apiKey.trim().isNotEmpty)
+      'Authorization': 'Bearer ${s.apiKey.trim()}',
+  };
 
   static Never _fail(Object e) {
     // LlmException 子类(如取消)原样重抛,保留类型供调用方分流
     if (e is LlmException) throw e;
     var msg = '请求失败:$e';
     if (kIsWeb && e is http.ClientException) {
-      msg = '浏览器调试环境下请求被拦,可能是服务商未开放 CORS;'
+      msg =
+          '浏览器调试环境下请求被拦,可能是服务商未开放 CORS;'
           '此限制仅存在于 web 调试,桌面/手机端不受影响';
     }
     throw LlmException(msg);
@@ -61,10 +62,10 @@ class LlmClient {
 
   /// 只保留协议字段再入历史,防止 reasoning_content 等扩展字段回传被拒
   static Map<String, dynamic> _cleanMsg(Map<String, dynamic> m) => {
-        'role': m['role'],
-        'content': m['content'],
-        if (m['tool_calls'] != null) 'tool_calls': m['tool_calls'],
-      };
+    'role': m['role'],
+    'content': m['content'],
+    if (m['tool_calls'] != null) 'tool_calls': m['tool_calls'],
+  };
 
   /// 解析工具参数;拼接损坏(如 Gemini 重复帧导致 {…}{…})时提取首个平衡 JSON 对象
   static Map<String, dynamic> decodeToolArgs(String raw) {
@@ -111,10 +112,8 @@ class LlmClient {
         throw LlmException('HTTP ${resp.statusCode}:${_errorText(resp)}');
       }
       final data = jsonDecode(utf8.decode(resp.bodyBytes));
-      final models = (data['data'] as List?)
-              ?.map((m) => m['id'] as String)
-              .toList() ??
-          [];
+      final models =
+          (data['data'] as List?)?.map((m) => m['id'] as String).toList() ?? [];
       if (models.isEmpty) throw LlmException('服务返回了空模型列表');
       models.sort();
       return models;
@@ -129,15 +128,17 @@ class LlmClient {
     final watch = Stopwatch()..start();
     try {
       final resp = await http
-          .post(Uri.parse('${_base(s)}/chat/completions'),
-              headers: _headers(s),
-              body: jsonEncode({
-                'model': s.model.trim(),
-                'messages': [
-                  {'role': 'user', 'content': 'hi'}
-                ],
-                'max_tokens': 1,
-              }))
+          .post(
+            Uri.parse('${_base(s)}/chat/completions'),
+            headers: _headers(s),
+            body: jsonEncode({
+              'model': s.model.trim(),
+              'messages': [
+                {'role': 'user', 'content': 'hi'},
+              ],
+              'max_tokens': 1,
+            }),
+          )
           .timeout(_timeout);
       if (resp.statusCode != 200) {
         throw LlmException('HTTP ${resp.statusCode}:${_errorText(resp)}');
@@ -165,18 +166,30 @@ class LlmClient {
     }
     final model = s.model.trim();
     final attempts = <Map<String, dynamic>>[
-      {'model': model, 'prompt': prompt, 'n': 1, 'size': '1024x1024',
-        'response_format': 'b64_json'},
+      {
+        'model': model,
+        'prompt': prompt,
+        'n': 1,
+        'size': '1024x1024',
+        'response_format': 'b64_json',
+      },
       {'model': model, 'prompt': prompt, 'n': 1, 'size': '1024x1024'},
-      {'model': model, 'prompt': prompt, 'image_size': '1024x1024',
-        'batch_size': 1},
+      {
+        'model': model,
+        'prompt': prompt,
+        'image_size': '1024x1024',
+        'batch_size': 1,
+      },
     ];
     try {
       String lastErr = '';
       for (final body in attempts) {
         final resp = await http
-            .post(Uri.parse('${_base(s)}/images/generations'),
-                headers: _headers(s), body: jsonEncode(body))
+            .post(
+              Uri.parse('${_base(s)}/images/generations'),
+              headers: _headers(s),
+              body: jsonEncode(body),
+            )
             .timeout(const Duration(seconds: 180));
         if (resp.statusCode != 200) {
           lastErr = 'HTTP ${resp.statusCode}:${_errorText(resp)}';
@@ -208,23 +221,25 @@ class LlmClient {
   static Future<Uint8List> _novelAiImage(LlmSettings s, String prompt) async {
     // base 统一指向生图域;用户不管填 api. 还是 image. 都可用
     final resp = await http
-        .post(Uri.parse('https://image.novelai.net/ai/generate-image'),
-            headers: {..._headers(s), 'Accept': 'application/json'},
-            body: jsonEncode({
-              'input': prompt,
-              'model': s.model.trim(),
-              'action': 'generate',
-              'parameters': {
-                'width': 832,
-                'height': 1216,
-                'n_samples': 1,
-                'steps': 23,
-                'scale': 5,
-                'sampler': 'k_euler_ancestral',
-                'qualityToggle': true,
-                'ucPreset': 0,
-              },
-            }))
+        .post(
+          Uri.parse('https://image.novelai.net/ai/generate-image'),
+          headers: {..._headers(s), 'Accept': 'application/json'},
+          body: jsonEncode({
+            'input': prompt,
+            'model': s.model.trim(),
+            'action': 'generate',
+            'parameters': {
+              'width': 832,
+              'height': 1216,
+              'n_samples': 1,
+              'steps': 23,
+              'scale': 5,
+              'sampler': 'k_euler_ancestral',
+              'qualityToggle': true,
+              'ucPreset': 0,
+            },
+          }),
+        )
         .timeout(const Duration(seconds: 180));
     if (resp.statusCode != 200 && resp.statusCode != 201) {
       throw LlmException('HTTP ${resp.statusCode}:${_errorText(resp)}');
@@ -245,22 +260,27 @@ class LlmClient {
   }
 
   /// 对话补全,返回模型回复文本
-  static Future<String> chat(LlmSettings s,
-      {required String system, required String user}) async {
+  static Future<String> chat(
+    LlmSettings s, {
+    required String system,
+    required String user,
+  }) async {
     if (s.model.trim().isEmpty) {
       throw LlmException('请先在设置中配置 LLM API 与模型');
     }
     try {
       final resp = await http
-          .post(Uri.parse('${_base(s)}/chat/completions'),
-              headers: _headers(s),
-              body: jsonEncode({
-                'model': s.model.trim(),
-                'messages': [
-                  {'role': 'system', 'content': system},
-                  {'role': 'user', 'content': user},
-                ],
-              }))
+          .post(
+            Uri.parse('${_base(s)}/chat/completions'),
+            headers: _headers(s),
+            body: jsonEncode({
+              'model': s.model.trim(),
+              'messages': [
+                {'role': 'system', 'content': system},
+                {'role': 'user', 'content': user},
+              ],
+            }),
+          )
           .timeout(const Duration(seconds: 120));
       if (resp.statusCode != 200) {
         throw LlmException('HTTP ${resp.statusCode}:${_errorText(resp)}');
@@ -276,6 +296,70 @@ class LlmClient {
     }
   }
 
+  /// OpenAI-compatible streaming chat used by translation and other long jobs.
+  /// The callback receives only assistant content, never reasoning fields.
+  static Future<String> chatStream(
+    LlmSettings s, {
+    required List<Map<String, dynamic>> messages,
+    void Function(String delta)? onDelta,
+    bool Function()? shouldStop,
+  }) async {
+    if (s.model.trim().isEmpty) {
+      throw LlmException('请先在设置中配置 LLM API 与模型');
+    }
+    final client = http.Client();
+    var full = '';
+    try {
+      final request =
+          http.Request('POST', Uri.parse('${_base(s)}/chat/completions'))
+            ..headers.addAll(_headers(s))
+            ..headers['Accept'] = 'text/event-stream'
+            ..body = jsonEncode({
+              'model': s.model.trim(),
+              'messages': messages,
+              'stream': true,
+            });
+      final response = await client
+          .send(request)
+          .timeout(const Duration(seconds: 60));
+      if (response.statusCode != 200) {
+        throw LlmException(
+          'HTTP ${response.statusCode}:${await response.stream.bytesToString()}',
+        );
+      }
+      await for (final line
+          in response.stream
+              .transform(utf8.decoder)
+              .transform(const LineSplitter())
+              .timeout(const Duration(seconds: 120))) {
+        if (shouldStop?.call() ?? false) throw LlmCancelledException();
+        if (!line.startsWith('data:')) continue;
+        final payload = line.substring(5).trim();
+        if (payload.isEmpty) continue;
+        if (payload == '[DONE]') break;
+        final dynamic data;
+        try {
+          data = jsonDecode(payload);
+        } catch (_) {
+          continue;
+        }
+        final delta = _firstChoice(data)?['delta'];
+        if (delta is! Map) continue;
+        final content = delta['content'];
+        if (content is String && content.isNotEmpty) {
+          full += content;
+          onDelta?.call(content);
+        }
+      }
+      if (full.trim().isEmpty) throw LlmException('模型返回了空内容');
+      return full;
+    } catch (e) {
+      _fail(e);
+    } finally {
+      client.close();
+    }
+  }
+
   /// 带 function calling 的对话循环:模型可调用工具检索信息后再作答。
   /// 服务不支持 tools 时抛 [ToolsUnsupportedException],调用方可回退 [chat]。
   static Future<String> chatWithTools(
@@ -284,7 +368,7 @@ class LlmClient {
     required String user,
     required List<Map<String, dynamic>> tools,
     required Future<String> Function(String name, Map<String, dynamic> args)
-        onToolCall,
+    onToolCall,
     int maxRounds = 6,
   }) async {
     if (s.model.trim().isEmpty) {
@@ -297,13 +381,15 @@ class LlmClient {
     try {
       for (var round = 0; round < maxRounds; round++) {
         final resp = await http
-            .post(Uri.parse('${_base(s)}/chat/completions'),
-                headers: _headers(s),
-                body: jsonEncode({
-                  'model': s.model.trim(),
-                  'messages': messages,
-                  'tools': tools,
-                }))
+            .post(
+              Uri.parse('${_base(s)}/chat/completions'),
+              headers: _headers(s),
+              body: jsonEncode({
+                'model': s.model.trim(),
+                'messages': messages,
+                'tools': tools,
+              }),
+            )
             .timeout(const Duration(seconds: 120));
         if (resp.statusCode == 404) {
           throw ToolsUnsupportedException(_errorText(resp));
@@ -348,6 +434,7 @@ class LlmClient {
       _fail(e);
     }
   }
+
   /// 会话式工具循环:在调用方持有的 [messages] 上继续对话(user 消息已追加),
   /// 工具调用过程与最终回复都会留在 messages 中,构成对话记忆。
   static Future<String> chatTurn(
@@ -355,7 +442,7 @@ class LlmClient {
     required List<Map<String, dynamic>> messages,
     required List<Map<String, dynamic>> tools,
     required Future<String> Function(String name, Map<String, dynamic> args)
-        onToolCall,
+    onToolCall,
     int maxRounds = 1000,
   }) async {
     if (s.model.trim().isEmpty) {
@@ -364,13 +451,15 @@ class LlmClient {
     try {
       for (var round = 0; round < maxRounds; round++) {
         final resp = await http
-            .post(Uri.parse('${_base(s)}/chat/completions'),
-                headers: _headers(s),
-                body: jsonEncode({
-                  'model': s.model.trim(),
-                  'messages': messages,
-                  'tools': tools,
-                }))
+            .post(
+              Uri.parse('${_base(s)}/chat/completions'),
+              headers: _headers(s),
+              body: jsonEncode({
+                'model': s.model.trim(),
+                'messages': messages,
+                'tools': tools,
+              }),
+            )
             .timeout(const Duration(seconds: 180));
         if (resp.statusCode == 404) {
           throw ToolsUnsupportedException(_errorText(resp));
@@ -424,7 +513,7 @@ class LlmClient {
     required List<Map<String, dynamic>> messages,
     required List<Map<String, dynamic>> tools,
     required Future<String> Function(String name, Map<String, dynamic> args)
-        onToolCall,
+    onToolCall,
     void Function(String delta)? onDelta,
     void Function(String name)? onToolStart,
     bool Function()? shouldStop,
@@ -441,32 +530,34 @@ class LlmClient {
         var contentBuf = '';
         final toolAcc = <int, Map<String, String>>{};
         try {
-          final req = http.Request(
-              'POST', Uri.parse('${_base(s)}/chat/completions'))
-            ..headers.addAll(_headers(s))
-            ..body = jsonEncode({
-              'model': s.model.trim(),
-              'messages': messages,
-              'tools': tools,
-              'stream': true,
-            });
-          final resp =
-              await client.send(req).timeout(const Duration(seconds: 60));
+          final req =
+              http.Request('POST', Uri.parse('${_base(s)}/chat/completions'))
+                ..headers.addAll(_headers(s))
+                ..body = jsonEncode({
+                  'model': s.model.trim(),
+                  'messages': messages,
+                  'tools': tools,
+                  'stream': true,
+                });
+          final resp = await client
+              .send(req)
+              .timeout(const Duration(seconds: 60));
           if (resp.statusCode == 404) {
-            throw ToolsUnsupportedException(
-                await resp.stream.bytesToString());
+            throw ToolsUnsupportedException(await resp.stream.bytesToString());
           }
           if (resp.statusCode == 400) {
             _throwToolsOr400(await resp.stream.bytesToString());
           }
           if (resp.statusCode != 200) {
             throw LlmException(
-                'HTTP ${resp.statusCode}:${await resp.stream.bytesToString()}');
+              'HTTP ${resp.statusCode}:${await resp.stream.bytesToString()}',
+            );
           }
-          await for (final line in resp.stream
-              .transform(utf8.decoder)
-              .transform(const LineSplitter())
-              .timeout(const Duration(seconds: 120))) {
+          await for (final line
+              in resp.stream
+                  .transform(utf8.decoder)
+                  .transform(const LineSplitter())
+                  .timeout(const Duration(seconds: 120))) {
             if (stopped()) {
               // 保留已流出的文本到记忆,丢弃未完成的工具轮
               if (contentBuf.trim().isNotEmpty && toolAcc.isEmpty) {
@@ -503,17 +594,20 @@ class LlmClient {
                   idx = rawIdx;
                 } else {
                   final id = tc['id'];
-                  final isNewId = id is String &&
+                  final isNewId =
+                      id is String &&
                       id.isNotEmpty &&
                       !toolAcc.values.any((a) => a['id'] == id);
                   idx = toolAcc.isEmpty
                       ? 0
                       : isNewId
-                          ? (toolAcc.keys.reduce((a, b) => a > b ? a : b) + 1)
-                          : toolAcc.keys.reduce((a, b) => a > b ? a : b);
+                      ? (toolAcc.keys.reduce((a, b) => a > b ? a : b) + 1)
+                      : toolAcc.keys.reduce((a, b) => a > b ? a : b);
                 }
                 final acc = toolAcc.putIfAbsent(
-                    idx, () => {'id': '', 'name': '', 'args': ''});
+                  idx,
+                  () => {'id': '', 'name': '', 'args': ''},
+                );
                 if (tc['id'] is String) acc['id'] = tc['id'] as String;
                 final fn = tc['function'];
                 if (fn is Map) {
@@ -543,7 +637,7 @@ class LlmClient {
                   'name': toolAcc[i]!['name'],
                   'arguments': toolAcc[i]!['args'],
                 },
-              }
+              },
           ];
           messages.add({
             'role': 'assistant',
@@ -620,7 +714,7 @@ class LlmClient {
         if (d is List) {
           return [
             for (final e in d)
-              if (e is Map) e.cast<String, dynamic>()
+              if (e is Map) e.cast<String, dynamic>(),
           ];
         }
       } catch (_) {}
@@ -636,7 +730,7 @@ class LlmClient {
             if (v is List && v.isNotEmpty && v.first is Map) {
               return [
                 for (final e in v)
-                  if (e is Map) e.cast<String, dynamic>()
+                  if (e is Map) e.cast<String, dynamic>(),
               ];
             }
           }

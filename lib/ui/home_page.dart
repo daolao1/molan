@@ -4,6 +4,7 @@ import '../data/db.dart';
 import '../data/transfer.dart';
 import 'novel_page.dart';
 import 'settings_page.dart';
+import 'reader_library_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key, required this.db});
@@ -35,11 +36,13 @@ class HomePage extends StatelessWidget {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('创建')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('创建'),
+          ),
         ],
       ),
     );
@@ -56,11 +59,13 @@ class HomePage extends StatelessWidget {
         content: const Text('该小说下的所有人物、地点、物品、场景、情节和设定都会一并删除,不可恢复。'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('删除')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
         ],
       ),
     );
@@ -70,10 +75,12 @@ class HomePage extends StatelessWidget {
   void _toast(BuildContext context, String msg, {bool error = false}) {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
-        content: Text(msg),
-        backgroundColor: error ? Theme.of(context).colorScheme.error : null,
-      ));
+      ..showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: error ? Theme.of(context).colorScheme.error : null,
+        ),
+      );
   }
 
   Future<void> _export(BuildContext context, Novel novel) async {
@@ -110,10 +117,20 @@ class HomePage extends StatelessWidget {
             onPressed: () => _import(context),
           ),
           IconButton(
+            icon: const Icon(Icons.menu_book_outlined),
+            tooltip: '阅读书库',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => ReaderLibraryPage(db: db)),
+            ),
+          ),
+          IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: '设置',
-            onPressed: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const SettingsPage())),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsPage()),
+            ),
           ),
         ],
       ),
@@ -137,8 +154,11 @@ class HomePage extends StatelessWidget {
                   title: Text(novel.title),
                   subtitle: novel.description.isEmpty
                       ? null
-                      : Text(novel.description,
-                          maxLines: 2, overflow: TextOverflow.ellipsis),
+                      : Text(
+                          novel.description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                   trailing: PopupMenuButton<String>(
                     onSelected: (v) {
                       if (v == 'export') _export(context, novel);
@@ -150,9 +170,11 @@ class HomePage extends StatelessWidget {
                     ],
                   ),
                   onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => NovelPage(db: db, novel: novel))),
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => NovelPage(db: db, novel: novel),
+                    ),
+                  ),
                 ),
               );
             },
