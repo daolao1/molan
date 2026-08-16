@@ -21,6 +21,7 @@ class ChapterTranslator {
     required String chapterTitle,
     required String chapterHtml,
     String glossary = '',
+    String style = '',
     String previousContext = '',
     int batchChars = 4000,
     TranslationProgress? onProgress,
@@ -47,7 +48,13 @@ class ChapterTranslator {
     var context = previousContext;
     for (var bi = 0; bi < batches.length; bi++) {
       final batch = batches[bi];
-      final prompt = _batchPrompt(targetLanguage, batch, glossary, context);
+      final prompt = _batchPrompt(
+        targetLanguage,
+        batch,
+        glossary,
+        context,
+        style,
+      );
       final raw = await LlmClient.chatStream(
         settings,
         messages: [
@@ -153,12 +160,13 @@ class ChapterTranslator {
     List<String> batch,
     String glossary,
     String context,
+    String style,
   ) {
     final numbered = List.generate(
       batch.length,
       (i) => '[${i + 1}] ${batch[i]}',
     ).join('\n\n');
-    return '目标语言：$lang\n术语表：$glossary\n前文上下文（不要输出）：$context\n严格按编号逐段翻译，只输出 [N] 译文：\n$numbered';
+    return '目标语言：$lang\n翻译风格：$style\n术语表：$glossary\n前文上下文（不要输出）：$context\n严格按编号逐段翻译，只输出 [N] 译文：\n$numbered';
   }
 
   String _systemPrompt(String lang) => '你是专业小说翻译。翻译为$lang。每段一一对应，不合并、不拆分、不解释。';

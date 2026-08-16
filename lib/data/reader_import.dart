@@ -15,32 +15,38 @@ class ReaderImport {
     final chapters = <({String title, String html})>[];
     if (lower.endsWith('.epub')) {
       final archive = ZipDecoder().decodeBytes(bytes);
-      final files = archive.files
-          .where(
-            (f) =>
-                f.isFile &&
-                RegExp(
-                  r'\.(x?html?|htm)$',
-                  caseSensitive: false,
-                ).hasMatch(f.name),
-          )
-          .toList();
-      for (final f in files) {
-        final text = utf8.decode(f.content as List<int>, allowMalformed: true);
+      final files = <String, List<int>>{
+        for (final f in archive.files)
+          if (f.isFile) f.name.replaceAll('\\', '/'): f.content as List<int>,
+      };
+      final ordered = _epubSpine(files);
+      final names = ordered.isEmpty
+          ? files.keys
+                .where(
+                  (n) => RegExp(
+                    r'\.(x?html?|htm)$',
+                    caseSensitive: false,
+                  ).hasMatch(n),
+                )
+                .toList()
+          : ordered;
+      for (final name in names) {
+        final text = _decode(files[name] ?? const []);
         final doc = parser.parse(text);
         final body = doc.body?.innerHtml.trim() ?? '';
-        if (body.isNotEmpty)
+        if (body.isNotEmpty) {
           chapters.add((
             title: doc.querySelector('title')?.text.trim().isNotEmpty == true
                 ? doc.querySelector('title')!.text.trim()
+                : doc.querySelector('h1,h2,h3')?.text.trim().isNotEmpty == true
+                ? doc.querySelector('h1,h2,h3')!.text.trim()
                 : '第 ${chapters.length + 1} 章',
             html: body,
           ));
+        }
       }
     } else {
-      final text = utf8
-          .decode(bytes, allowMalformed: true)
-          .replaceAll('\r\n', '\n');
+      final text = _decode(bytes).replaceAll('\r\n', '\n');
       if (lower.endsWith('.html') || lower.endsWith('.htm')) {
         final doc = parser.parse(text);
         chapters.add((
@@ -72,6 +78,69 @@ class ReaderImport {
       );
     }
     return bookId;
+  }
+
+  static List<String> _epubSpine(Map<String, List<int>> files) {
+    final container = files['META-INF/container.xml'];
+    if (container == null) return [];
+    final root = parser
+        .parse(_decode(container))
+        .querySelector('rootfile')
+        ?.attributes['full-path'];
+    if (root == null || files[root] == null) return [];
+    final opf = parser.parse(_decode(files[root]!));
+    final manifest = <String, String>{};
+    for (final item in opf.querySelectorAll('manifest > item')) {
+      final id = item.attributes['id'];
+      final href = item.attributes['href'];
+      if (id != null && href != null) manifest[id] = _join(root, href);
+    }
+    return [
+      for (final ref in opf.querySelectorAll('spine > itemref'))
+        if (manifest[ref.attributes['idref']] != null)
+          manifest[ref.attributes['idref']]!,
+    ];
+  }
+
+  static String _join(String root, String href) {
+    final base = root.contains('/')
+        ? root.substring(0, root.lastIndexOf('/'))
+        : '';
+    final out = <String>[];
+    for (final part in [
+      ...base.split('/'),
+      ...Uri.decodeComponent(href).split('/'),
+    ]) {
+      if (part.isEmpty || part == '.') continue;
+      if (part == '..' && out.isNotEmpty) {
+        out.removeLast();
+      } else if (part != '..')
+        out.add(part);
+    }
+    return out.join('/');
+  }
+
+  static String _decode(List<int> bytes) {
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xef &&
+        bytes[1] == 0xbb &&
+        bytes[2] == 0xbf)
+      return utf8.decode(bytes.sublist(3), allowMalformed: true);
+    if (bytes.length >= 2 && bytes[0] == 0xff && bytes[1] == 0xfe)
+      return _utf16(bytes.sublist(2), true);
+    if (bytes.length >= 2 && bytes[0] == 0xfe && bytes[1] == 0xff)
+      return _utf16(bytes.sublist(2), false);
+    final value = utf8.decode(bytes, allowMalformed: true);
+    return value.contains('\uFFFD') ? latin1.decode(bytes) : value;
+  }
+
+  static String _utf16(List<int> bytes, bool little) {
+    final units = <int>[];
+    for (var i = 0; i + 1 < bytes.length; i += 2)
+      units.add(
+        little ? bytes[i] | bytes[i + 1] << 8 : bytes[i] << 8 | bytes[i + 1],
+      );
+    return String.fromCharCodes(units);
   }
 
   static String _escape(String s) => s

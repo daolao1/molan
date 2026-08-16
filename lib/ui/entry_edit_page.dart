@@ -12,15 +12,17 @@ import '../data/llm_client.dart';
 import '../data/novel_tools.dart';
 import '../data/prompts.dart';
 import '../data/settings.dart';
+import '../data/st_chatu8.dart';
 import 'widgets.dart';
 
 class EntryEditPage extends StatefulWidget {
-  const EntryEditPage(
-      {super.key,
-      required this.db,
-      required this.novel,
-      required this.kind,
-      this.entry});
+  const EntryEditPage({
+    super.key,
+    required this.db,
+    required this.novel,
+    required this.kind,
+    this.entry,
+  });
 
   final AppDatabase db;
   final Novel novel;
@@ -46,8 +48,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
   ({
     String name,
     Map<String, String> fields,
-    List<({int toId, String label})> links
-  })? _snapshot;
+    List<({int toId, String label})> links,
+  })?
+  _snapshot;
 
   // 通用关联(所有类型):内存暂存,保存时同步入库
   List<Entry> _allEntries = const [];
@@ -74,29 +77,28 @@ class _EntryEditPageState extends State<EntryEditPage> {
       final target = _fields.any((f) => f.key == 'notes')
           ? 'notes'
           : _fields.last.key;
-      final extra =
-          [for (final e in ext.entries) '${e.key}:${e.value}'].join('\n');
+      final extra = [
+        for (final e in ext.entries) '${e.key}:${e.value}',
+      ].join('\n');
       final cur = data[target]?.trim() ?? '';
       data[target] = cur.isEmpty ? extra : '$cur\n$extra';
       _dirty = true;
     }
     _fieldCtrls = {
       for (final f in _fields)
-        f.key: TextEditingController(text: data[f.key] ?? '')
+        f.key: TextEditingController(text: data[f.key] ?? ''),
     };
     _loadLinks();
     AppContextRegistry.push(_ctxProvider);
   }
 
   PageSnapshot _ctxProvider() => PageSnapshot(
-        novelId: widget.novel.id,
-        detail: '正在编辑《${widget.novel.title}》的${widget.kind.label}卡「${_nameCtrl.text}」。\n'
-            '已填内容:\n${[
-          for (final f in _fields)
-            if (_fieldCtrls[f.key]!.text.trim().isNotEmpty)
-              '${f.label}:${_fieldCtrls[f.key]!.text.trim()}'
-        ].join('\n')}',
-      );
+    novelId: widget.novel.id,
+    detail:
+        '正在编辑《${widget.novel.title}》的${widget.kind.label}卡「${_nameCtrl.text}」。\n'
+        '已填内容:\n${[for (final f in _fields)
+          if (_fieldCtrls[f.key]!.text.trim().isNotEmpty) '${f.label}:${_fieldCtrls[f.key]!.text.trim()}'].join('\n')}',
+  );
 
   Future<void> _loadLinks() async {
     final all = await widget.db.allEntriesOf(widget.novel.id);
@@ -144,7 +146,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
     final editing = index != null ? _links[index] : null;
     final candidates = [
       for (final e in _allEntries)
-        if (e.id != widget.entry?.id) e
+        if (e.id != widget.entry?.id) e,
     ];
     if (candidates.isEmpty) {
       _toast('没有可关联的卡片', error: true);
@@ -163,14 +165,18 @@ class _EntryEditPageState extends State<EntryEditPage> {
               initialValue: targetId,
               isExpanded: true,
               decoration: const InputDecoration(
-                  labelText: '选择卡片', border: OutlineInputBorder()),
+                labelText: '选择卡片',
+                border: OutlineInputBorder(),
+              ),
               items: [
                 for (final e in candidates)
                   DropdownMenuItem(
-                      value: e.id,
-                      child: Text(
-                          '[${EntryKind.values.byName(e.kind).label}] ${e.name}',
-                          overflow: TextOverflow.ellipsis)),
+                    value: e.id,
+                    child: Text(
+                      '[${EntryKind.values.byName(e.kind).label}] ${e.name}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
               ],
               onChanged: (v) => targetId = v ?? targetId,
             ),
@@ -178,19 +184,22 @@ class _EntryEditPageState extends State<EntryEditPage> {
             TextField(
               controller: labelCtrl,
               decoration: const InputDecoration(
-                  labelText: '关联描述(可选)',
-                  hintText: '幼年在此学艺 / 随身佩带 / 每晚必到…',
-                  border: OutlineInputBorder()),
+                labelText: '关联描述(可选)',
+                hintText: '幼年在此学艺 / 随身佩带 / 每晚必到…',
+                border: OutlineInputBorder(),
+              ),
             ),
           ],
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(editing == null ? '关联' : '保存')),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(editing == null ? '关联' : '保存'),
+          ),
         ],
       ),
     );
@@ -236,9 +245,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
         allEntries: all,
         links: links,
         currentName: _nameCtrl.text,
-        currentData: {
-          for (final e in _fieldCtrls.entries) e.key: e.value.text
-        },
+        currentData: {for (final e in _fieldCtrls.entries) e.key: e.value.text},
         request: request,
       );
       String reply;
@@ -247,8 +254,11 @@ class _EntryEditPageState extends State<EntryEditPage> {
         final executor = NovelToolExecutor(widget.db, widget.novel.id);
         reply = await LlmClient.chatWithTools(
           settings,
-          system: entryGenerationSystem(widget.kind,
-              mode: _genMode, withTools: true),
+          system: entryGenerationSystem(
+            widget.kind,
+            mode: _genMode,
+            withTools: true,
+          ),
           user: userMsg,
           tools: novelToolSchemas,
           onToolCall: executor.call,
@@ -287,14 +297,14 @@ class _EntryEditPageState extends State<EntryEditPage> {
         if (lks is List) {
           for (final r in lks) {
             if (r is! Map) continue;
-            final target =
-                (r['to'] ?? r['target'])?.toString().trim() ?? '';
+            final target = (r['to'] ?? r['target'])?.toString().trim() ?? '';
             final label = r['label']?.toString().trim() ?? '';
             if (target.isEmpty) continue;
             for (final e in _allEntries) {
               if (e.name == target && e.id != widget.entry?.id) {
-                final dup = _links
-                    .any((x) => x.toId == e.id && x.label == label);
+                final dup = _links.any(
+                  (x) => x.toId == e.id && x.label == label,
+                );
                 if (!dup) {
                   _links.add((toId: e.id, label: label));
                   addedRels++;
@@ -307,9 +317,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
         _aiPromptCtrl.clear();
         _dirty = true;
       });
-      _toast(addedRels > 0
-          ? '已生成(含 $addedRels 条关联),请检查后接受或拒绝'
-          : '已生成,请检查后接受或拒绝');
+      _toast(
+        addedRels > 0 ? '已生成(含 $addedRels 条关联),请检查后接受或拒绝' : '已生成,请检查后接受或拒绝',
+      );
     } on LlmException catch (e) {
       _toast(e.message, error: true);
     } catch (e) {
@@ -331,7 +341,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
           ? <String>[]
           : [
               for (final n in t.substring(i + 1).split(RegExp('[、,,]')))
-                if (n.trim().isNotEmpty) n.trim()
+                if (n.trim().isNotEmpty) n.trim(),
             ];
       if (call.isNotEmpty) out.add((call: call, by: by));
     }
@@ -340,7 +350,8 @@ class _EntryEditPageState extends State<EntryEditPage> {
 
   void _writeApps(List<({String call, List<String> by})> apps) {
     _fieldCtrls['appellations']!.text = [
-      for (final a in apps) a.by.isEmpty ? a.call : '${a.call}|${a.by.join('、')}'
+      for (final a in apps)
+        a.by.isEmpty ? a.call : '${a.call}|${a.by.join('、')}',
     ].join('\n');
     _dirty = true;
   }
@@ -377,13 +388,16 @@ class _EntryEditPageState extends State<EntryEditPage> {
                   controller: callCtrl,
                   autofocus: editing == null,
                   decoration: const InputDecoration(
-                      labelText: '称呼',
-                      hintText: '老大 / 陛下 / 小妹…',
-                      border: OutlineInputBorder()),
+                    labelText: '称呼',
+                    hintText: '老大 / 陛下 / 小妹…',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
                 const SizedBox(height: 12),
-                Text('谁这么叫(不选 = 所有人通用)',
-                    style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  '谁这么叫(不选 = 所有人通用)',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 6,
@@ -393,8 +407,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
                       FilterChip(
                         label: Text(n),
                         selected: selected.contains(n),
-                        onSelected: (v) => setDialog(() =>
-                            v ? selected.add(n) : selected.remove(n)),
+                        onSelected: (v) => setDialog(
+                          () => v ? selected.add(n) : selected.remove(n),
+                        ),
                       ),
                   ],
                 ),
@@ -403,11 +418,13 @@ class _EntryEditPageState extends State<EntryEditPage> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('取消')),
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
             FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: Text(editing == null ? '添加' : '保存')),
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(editing == null ? '添加' : '保存'),
+            ),
           ],
         ),
       ),
@@ -417,7 +434,7 @@ class _EntryEditPageState extends State<EntryEditPage> {
         call: callCtrl.text.trim(),
         by: [
           for (final n in names)
-            if (selected.contains(n)) n
+            if (selected.contains(n)) n,
         ],
       );
       setState(() {
@@ -456,11 +473,13 @@ class _EntryEditPageState extends State<EntryEditPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
-        content: Text(msg),
-        backgroundColor: error ? Theme.of(context).colorScheme.error : null,
-        duration: Duration(seconds: error ? 6 : 3),
-      ));
+      ..showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: error ? Theme.of(context).colorScheme.error : null,
+          duration: Duration(seconds: error ? 6 : 3),
+        ),
+      );
   }
 
   Future<void> _save() async {
@@ -476,7 +495,11 @@ class _EntryEditPageState extends State<EntryEditPage> {
     int entryId;
     if (widget.entry == null) {
       entryId = await widget.db.createEntry(
-          widget.novel.id, widget.kind, name, content);
+        widget.novel.id,
+        widget.kind,
+        name,
+        content,
+      );
     } else {
       entryId = widget.entry!.id;
       await widget.db.updateEntry(entryId, name, content);
@@ -502,11 +525,13 @@ class _EntryEditPageState extends State<EntryEditPage> {
 
   Future<void> _setImageFromBytes(Uint8List bytes) async {
     try {
-      final codec = await ui.instantiateImageCodec(bytes,
-          targetWidth: 512, allowUpscaling: false);
+      final codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: 512,
+        allowUpscaling: false,
+      );
       final frame = await codec.getNextFrame();
-      final data =
-          await frame.image.toByteData(format: ui.ImageByteFormat.png);
+      final data = await frame.image.toByteData(format: ui.ImageByteFormat.png);
       setState(() {
         _imageData = base64Encode(data!.buffer.asUint8List());
         _dirty = true;
@@ -527,24 +552,22 @@ class _EntryEditPageState extends State<EntryEditPage> {
     final filled = [
       for (final f in _fields)
         if (_fieldCtrls[f.key]!.text.trim().isNotEmpty)
-          '${f.label}:${_fieldCtrls[f.key]!.text.trim()}'
+          '${f.label}:${_fieldCtrls[f.key]!.text.trim()}',
     ].join('\n');
     final card = '${widget.kind.label}「$name」\n$filled';
     setState(() => _imageBusy = true);
     try {
-      // 两段式:先用文本模型把卡面提炼成视觉化英文提示词,失败则退回原文拼接
-      String prompt;
-      try {
-        final loreSettings = await SettingsStore.loadFor(LlmPurpose.lore);
-        prompt = (await LlmClient.chat(loreSettings,
-                system: imagePromptSystem, user: card))
-            .trim();
-      } catch (_) {
-        prompt = '$card\nhigh quality illustration, single subject, '
-            'clean composition, no text';
-      }
-      final settings = await SettingsStore.loadProfile(LlmPurpose.image);
-      final bytes = await LlmClient.generateImage(settings, prompt);
+      // Keep the card text intact; prompt optimization is disabled for native
+      // st-chat8 workflows and their own prompt syntax.
+      final prompt =
+          '$card\nhigh quality illustration, single subject, clean composition, no text';
+      final native = await StChatu8Store.load();
+      final bytes = native != null
+          ? await StChatu8ImageClient.generate(native, prompt)
+          : await LlmClient.generateImage(
+              await SettingsStore.loadProfile(LlmPurpose.image),
+              prompt,
+            );
       await _setImageFromBytes(bytes);
     } on LlmException catch (e) {
       _toast(e.message, error: true);
@@ -563,11 +586,13 @@ class _EntryEditPageState extends State<EntryEditPage> {
         title: const Text('放弃未保存的修改?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('继续编辑')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('继续编辑'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('放弃')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('放弃'),
+          ),
         ],
       ),
     );
@@ -589,9 +614,10 @@ class _EntryEditPageState extends State<EntryEditPage> {
           title: Text('${isNew ? '新建' : '编辑'}${widget.kind.label}'),
           actions: [
             FilledButton.tonalIcon(
-                onPressed: _save,
-                icon: const Icon(Icons.check),
-                label: const Text('保存')),
+              onPressed: _save,
+              icon: const Icon(Icons.check),
+              label: const Text('保存'),
+            ),
             const SizedBox(width: 8),
           ],
         ),
@@ -601,93 +627,99 @@ class _EntryEditPageState extends State<EntryEditPage> {
             // 设定的 AI 生成在列表页顶部统一提供,编辑页不重复显示
             if (widget.kind != EntryKind.lore)
               Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.auto_awesome,
-                            size: 18,
-                            color: Theme.of(context).colorScheme.primary),
-                        const SizedBox(width: 6),
-                        Text('AI 生成',
-                            style: Theme.of(context).textTheme.titleSmall),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    SubmitOnEnter(
-                      onSubmit: _generate,
-                      child: TextField(
-                        controller: _aiPromptCtrl,
-                        minLines: 2,
-                        maxLines: 4,
-                        decoration: InputDecoration(
-                          hintText: _genMode == GenerationMode.generate
-                              ? '一句话描述你想要的${widget.kind.label},Enter 生成'
-                              : '写下要补充的设定,AI 只更新相关字段,Enter 生成',
-                          border: const OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (_snapshot != null)
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Row(
                         children: [
-                          const Expanded(
-                              child: Text('对生成结果满意吗？拒绝将恢复之前内容')),
-                          OutlinedButton.icon(
-                            onPressed: _rejectGeneration,
-                            icon: const Icon(Icons.close, size: 18),
-                            label: const Text('拒绝'),
+                          Icon(
+                            Icons.auto_awesome,
+                            size: 18,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
-                          const SizedBox(width: 8),
-                          FilledButton.icon(
-                            onPressed: _acceptGeneration,
-                            icon: const Icon(Icons.check, size: 18),
-                            label: const Text('接受'),
+                          const SizedBox(width: 6),
+                          Text(
+                            'AI 生成',
+                            style: Theme.of(context).textTheme.titleSmall,
                           ),
                         ],
-                      )
-                    else
-                      Row(
-                        children: [
-                          SegmentedButton<GenerationMode>(
-                            segments: [
-                              for (final m in GenerationMode.values)
-                                ButtonSegment(
+                      ),
+                      const SizedBox(height: 8),
+                      SubmitOnEnter(
+                        onSubmit: _generate,
+                        child: TextField(
+                          controller: _aiPromptCtrl,
+                          minLines: 2,
+                          maxLines: 4,
+                          decoration: InputDecoration(
+                            hintText: _genMode == GenerationMode.generate
+                                ? '一句话描述你想要的${widget.kind.label},Enter 生成'
+                                : '写下要补充的设定,AI 只更新相关字段,Enter 生成',
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (_snapshot != null)
+                        Row(
+                          children: [
+                            const Expanded(child: Text('对生成结果满意吗？拒绝将恢复之前内容')),
+                            OutlinedButton.icon(
+                              onPressed: _rejectGeneration,
+                              icon: const Icon(Icons.close, size: 18),
+                              label: const Text('拒绝'),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton.icon(
+                              onPressed: _acceptGeneration,
+                              icon: const Icon(Icons.check, size: 18),
+                              label: const Text('接受'),
+                            ),
+                          ],
+                        )
+                      else
+                        Row(
+                          children: [
+                            SegmentedButton<GenerationMode>(
+                              segments: [
+                                for (final m in GenerationMode.values)
+                                  ButtonSegment(
                                     value: m,
                                     label: Text(m.label),
                                     tooltip: m == GenerationMode.generate
                                         ? '自由发挥,填满整张卡片'
-                                        : '只写你提到的内容,其他字段不动'),
-                            ],
-                            selected: {_genMode},
-                            showSelectedIcon: false,
-                            onSelectionChanged: (s) =>
-                                setState(() => _genMode = s.first),
-                          ),
-                          const Spacer(),
-                          FilledButton.tonalIcon(
-                            onPressed: _generating ? null : _generate,
-                            icon: _generating
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2))
-                                : const Icon(Icons.auto_awesome),
-                            label: Text(_generating
-                                ? '生成中…'
-                                : '${_genMode.label}并填入'),
-                          ),
-                        ],
-                      ),
-                  ],
+                                        : '只写你提到的内容,其他字段不动',
+                                  ),
+                              ],
+                              selected: {_genMode},
+                              showSelectedIcon: false,
+                              onSelectionChanged: (s) =>
+                                  setState(() => _genMode = s.first),
+                            ),
+                            const Spacer(),
+                            FilledButton.tonalIcon(
+                              onPressed: _generating ? null : _generate,
+                              icon: _generating
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.auto_awesome),
+                              label: Text(
+                                _generating ? '生成中…' : '${_genMode.label}并填入',
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
                 ),
               ),
-            ),
             const SizedBox(height: 16),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -703,27 +735,34 @@ class _EntryEditPageState extends State<EntryEditPage> {
                               height: 96,
                               decoration: BoxDecoration(
                                 border: Border.all(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .outlineVariant),
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.outlineVariant,
+                                ),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: _imageBusy
                                   ? const Center(
                                       child: SizedBox(
-                                          width: 24,
-                                          height: 24,
-                                          child: CircularProgressIndicator(
-                                              strokeWidth: 2)))
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    )
                                   : const Column(
                                       mainAxisAlignment:
                                           MainAxisAlignment.center,
                                       children: [
-                                        Icon(Icons
-                                            .add_photo_alternate_outlined),
+                                        Icon(
+                                          Icons.add_photo_alternate_outlined,
+                                        ),
                                         SizedBox(height: 4),
-                                        Text('图片',
-                                            style: TextStyle(fontSize: 12)),
+                                        Text(
+                                          '图片',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
                                       ],
                                     ),
                             )
@@ -732,20 +771,24 @@ class _EntryEditPageState extends State<EntryEditPage> {
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
                                   child: Image.memory(
-                                      base64Decode(_imageData),
-                                      width: 96,
-                                      height: 96,
-                                      fit: BoxFit.cover),
+                                    base64Decode(_imageData),
+                                    width: 96,
+                                    height: 96,
+                                    fit: BoxFit.cover,
+                                  ),
                                 ),
                                 if (_imageBusy)
                                   const Positioned.fill(
-                                      child: Center(
-                                          child: SizedBox(
-                                              width: 24,
-                                              height: 24,
-                                              child:
-                                                  CircularProgressIndicator(
-                                                      strokeWidth: 2)))),
+                                    child: Center(
+                                      child: SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                               ],
                             ),
                     ),
@@ -773,8 +816,9 @@ class _EntryEditPageState extends State<EntryEditPage> {
                     autofocus: isNew,
                     onChanged: (_) => _dirty = true,
                     decoration: InputDecoration(
-                        labelText: '${widget.kind.label}名称 *',
-                        border: const OutlineInputBorder()),
+                      labelText: '${widget.kind.label}名称 *',
+                      border: const OutlineInputBorder(),
+                    ),
                   ),
                 ),
               ],
@@ -806,9 +850,10 @@ class _EntryEditPageState extends State<EntryEditPage> {
                       Row(
                         children: [
                           Expanded(
-                            child: Text('称呼',
-                                style:
-                                    Theme.of(context).textTheme.titleSmall),
+                            child: Text(
+                              '称呼',
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
                           ),
                           TextButton.icon(
                             onPressed: () => _editAppellation(),
@@ -826,12 +871,14 @@ class _EntryEditPageState extends State<EntryEditPage> {
                         ListTile(
                           dense: true,
                           contentPadding: EdgeInsets.zero,
-                          leading:
-                              const Icon(Icons.record_voice_over, size: 18),
+                          leading: const Icon(
+                            Icons.record_voice_over,
+                            size: 18,
+                          ),
                           title: Text(a.call),
-                          subtitle: Text(a.by.isEmpty
-                              ? '所有人通用'
-                              : a.by.join('、')),
+                          subtitle: Text(
+                            a.by.isEmpty ? '所有人通用' : a.by.join('、'),
+                          ),
                           onTap: () => _editAppellation(index: i),
                           trailing: IconButton(
                             icon: const Icon(Icons.delete_outline, size: 20),
@@ -857,9 +904,10 @@ class _EntryEditPageState extends State<EntryEditPage> {
                     Row(
                       children: [
                         Expanded(
-                          child: Text('关联卡片',
-                              style:
-                                  Theme.of(context).textTheme.titleSmall),
+                          child: Text(
+                            '关联卡片',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
                         ),
                         TextButton.icon(
                           onPressed: () => _editLink(),
@@ -880,22 +928,23 @@ class _EntryEditPageState extends State<EntryEditPage> {
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.arrow_forward, size: 18),
                           title: Text(
-                              '→ [${EntryKind.values.byName(e.kind).label}] ${e.name}'),
-                          subtitle:
-                              l.label.isEmpty ? null : Text(l.label),
+                            '→ [${EntryKind.values.byName(e.kind).label}] ${e.name}',
+                          ),
+                          subtitle: l.label.isEmpty ? null : Text(l.label),
                           onTap: () => _openEntry(e),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
-                                icon: const Icon(Icons.edit_outlined,
-                                    size: 20),
+                                icon: const Icon(Icons.edit_outlined, size: 20),
                                 tooltip: '编辑描述',
                                 onPressed: () => _editLink(index: i),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.delete_outline,
-                                    size: 20),
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 20,
+                                ),
                                 tooltip: '删除',
                                 onPressed: () => setState(() {
                                   _links.removeAt(i);
@@ -912,7 +961,8 @@ class _EntryEditPageState extends State<EntryEditPage> {
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.arrow_back, size: 18),
                           title: Text(
-                              '← [${EntryKind.values.byName(e.kind).label}] ${e.name}${l.label.isEmpty ? '' : ':${l.label}'}'),
+                            '← [${EntryKind.values.byName(e.kind).label}] ${e.name}${l.label.isEmpty ? '' : ':${l.label}'}',
+                          ),
                           subtitle: const Text('由对方关联,在对方卡片中管理'),
                           onTap: () => _openEntry(e),
                         ),

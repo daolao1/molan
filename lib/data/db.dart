@@ -116,6 +116,9 @@ class ReaderChapters extends Table {
       integer().references(ReaderBooks, #id, onDelete: KeyAction.cascade)();
   IntColumn get position => integer()();
   TextColumn get title => text()();
+
+  /// 网页章节入口；本地导入章节为空。
+  TextColumn get sourceUrl => text().nullable()();
   TextColumn get originalHtml => text().withDefault(const Constant(''))();
   TextColumn get translatedHtml => text().withDefault(const Constant(''))();
   TextColumn get translationState =>
@@ -135,6 +138,17 @@ class ReaderProgress extends Table {
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   @override
   Set<Column> get primaryKey => {bookId};
+}
+
+class ReaderGlossaryEntries extends Table {
+  IntColumn get bookId =>
+      integer().references(ReaderBooks, #id, onDelete: KeyAction.cascade)();
+  TextColumn get source => text()();
+  TextColumn get target => text()();
+  TextColumn get note => text().withDefault(const Constant(''))();
+  DateTimeColumn get lastUsedAt => dateTime().withDefault(currentDateAndTime)();
+  @override
+  Set<Column> get primaryKey => {bookId, source};
 }
 
 enum EntryKind {
@@ -163,6 +177,7 @@ enum EntryKind {
     ReaderBooks,
     ReaderChapters,
     ReaderProgress,
+    ReaderGlossaryEntries,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -179,7 +194,7 @@ class AppDatabase extends _$AppDatabase {
       );
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 16;
 
   /// 迁移中断重跑时列可能已存在,跳过避免 duplicate column 崩库
   Future<void> _addColumnIfAbsent(
@@ -260,6 +275,11 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(readerChapters);
         await m.createTable(readerProgress);
       }
+      if (from < 15) {
+        await _addColumnIfAbsent(m, readerBooks, readerBooks.canonicalUrl);
+        await _addColumnIfAbsent(m, readerChapters, readerChapters.sourceUrl);
+      }
+      if (from < 16) await m.createTable(readerGlossaryEntries);
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -289,11 +309,15 @@ class AppDatabase extends _$AppDatabase {
     required String title,
     String author = '',
     String description = '',
+    String? canonicalUrl,
+    String sourceId = 'local',
   }) => into(readerBooks).insert(
     ReaderBooksCompanion.insert(
       title: title,
       author: Value(author),
       description: Value(description),
+      canonicalUrl: Value(canonicalUrl),
+      sourceId: Value(sourceId),
     ),
   );
   Future<ReaderBook?> readerBookById(int id) =>
@@ -308,11 +332,13 @@ class AppDatabase extends _$AppDatabase {
     required int position,
     required String title,
     required String originalHtml,
+    String? sourceUrl,
   }) => into(readerChapters).insert(
     ReaderChaptersCompanion.insert(
       bookId: bookId,
       position: position,
       title: title,
+      sourceUrl: Value(sourceUrl),
       originalHtml: Value(originalHtml),
     ),
   );
@@ -327,6 +353,13 @@ class AppDatabase extends _$AppDatabase {
       updatedAt: Value(DateTime.now()),
     ),
   );
+  Future<void> updateReaderOriginal(int id, String html) =>
+      (update(readerChapters)..where((t) => t.id.equals(id))).write(
+        ReaderChaptersCompanion(
+          originalHtml: Value(html),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
   Future<ReaderProgressData?> readerProgressFor(int bookId) => (select(
     readerProgress,
   )..where((t) => t.bookId.equals(bookId))).getSingleOrNull();
@@ -344,6 +377,29 @@ class AppDatabase extends _$AppDatabase {
   );
   Future<void> deleteReaderBook(int id) =>
       (delete(readerBooks)..where((t) => t.id.equals(id))).go();
+
+  Future<List<ReaderGlossaryEntry>> readerGlossaryFor(int bookId) =>
+      (select(readerGlossaryEntries)
+            ..where((t) => t.bookId.equals(bookId))
+            ..orderBy([(t) => OrderingTerm.desc(t.lastUsedAt)]))
+          .get();
+  Future<void> upsertReaderGlossary({
+    required int bookId,
+    required String source,
+    required String target,
+    String note = '',
+  }) => into(readerGlossaryEntries).insertOnConflictUpdate(
+    ReaderGlossaryEntriesCompanion.insert(
+      bookId: bookId,
+      source: source.trim(),
+      target: target.trim(),
+      note: Value(note.trim()),
+      lastUsedAt: Value(DateTime.now()),
+    ),
+  );
+  Future<void> deleteReaderGlossary(int bookId, String source) => (delete(
+    readerGlossaryEntries,
+  )..where((t) => t.bookId.equals(bookId) & t.source.equals(source))).go();
 
   /// 更新挂载(逗号分隔令牌:纯数字=单卡 id,set:{id}=设定集)
   Future<void> updateNovelStyle(int id, String styleEntryIds) =>

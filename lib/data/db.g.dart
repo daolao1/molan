@@ -3176,6 +3176,17 @@ class $ReaderChaptersTable extends ReaderChapters
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _sourceUrlMeta = const VerificationMeta(
+    'sourceUrl',
+  );
+  @override
+  late final GeneratedColumn<String> sourceUrl = GeneratedColumn<String>(
+    'source_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _originalHtmlMeta = const VerificationMeta(
     'originalHtml',
   );
@@ -3230,6 +3241,7 @@ class $ReaderChaptersTable extends ReaderChapters
     bookId,
     position,
     title,
+    sourceUrl,
     originalHtml,
     translatedHtml,
     translationState,
@@ -3273,6 +3285,12 @@ class $ReaderChaptersTable extends ReaderChapters
       );
     } else if (isInserting) {
       context.missing(_titleMeta);
+    }
+    if (data.containsKey('source_url')) {
+      context.handle(
+        _sourceUrlMeta,
+        sourceUrl.isAcceptableOrUnknown(data['source_url']!, _sourceUrlMeta),
+      );
     }
     if (data.containsKey('original_html')) {
       context.handle(
@@ -3332,6 +3350,10 @@ class $ReaderChaptersTable extends ReaderChapters
         DriftSqlType.string,
         data['${effectivePrefix}title'],
       )!,
+      sourceUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_url'],
+      ),
       originalHtml: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}original_html'],
@@ -3362,6 +3384,9 @@ class ReaderChapter extends DataClass implements Insertable<ReaderChapter> {
   final int bookId;
   final int position;
   final String title;
+
+  /// 网页章节入口；本地导入章节为空。
+  final String? sourceUrl;
   final String originalHtml;
   final String translatedHtml;
   final String translationState;
@@ -3371,6 +3396,7 @@ class ReaderChapter extends DataClass implements Insertable<ReaderChapter> {
     required this.bookId,
     required this.position,
     required this.title,
+    this.sourceUrl,
     required this.originalHtml,
     required this.translatedHtml,
     required this.translationState,
@@ -3383,6 +3409,9 @@ class ReaderChapter extends DataClass implements Insertable<ReaderChapter> {
     map['book_id'] = Variable<int>(bookId);
     map['position'] = Variable<int>(position);
     map['title'] = Variable<String>(title);
+    if (!nullToAbsent || sourceUrl != null) {
+      map['source_url'] = Variable<String>(sourceUrl);
+    }
     map['original_html'] = Variable<String>(originalHtml);
     map['translated_html'] = Variable<String>(translatedHtml);
     map['translation_state'] = Variable<String>(translationState);
@@ -3396,6 +3425,9 @@ class ReaderChapter extends DataClass implements Insertable<ReaderChapter> {
       bookId: Value(bookId),
       position: Value(position),
       title: Value(title),
+      sourceUrl: sourceUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceUrl),
       originalHtml: Value(originalHtml),
       translatedHtml: Value(translatedHtml),
       translationState: Value(translationState),
@@ -3413,6 +3445,7 @@ class ReaderChapter extends DataClass implements Insertable<ReaderChapter> {
       bookId: serializer.fromJson<int>(json['bookId']),
       position: serializer.fromJson<int>(json['position']),
       title: serializer.fromJson<String>(json['title']),
+      sourceUrl: serializer.fromJson<String?>(json['sourceUrl']),
       originalHtml: serializer.fromJson<String>(json['originalHtml']),
       translatedHtml: serializer.fromJson<String>(json['translatedHtml']),
       translationState: serializer.fromJson<String>(json['translationState']),
@@ -3427,6 +3460,7 @@ class ReaderChapter extends DataClass implements Insertable<ReaderChapter> {
       'bookId': serializer.toJson<int>(bookId),
       'position': serializer.toJson<int>(position),
       'title': serializer.toJson<String>(title),
+      'sourceUrl': serializer.toJson<String?>(sourceUrl),
       'originalHtml': serializer.toJson<String>(originalHtml),
       'translatedHtml': serializer.toJson<String>(translatedHtml),
       'translationState': serializer.toJson<String>(translationState),
@@ -3439,6 +3473,7 @@ class ReaderChapter extends DataClass implements Insertable<ReaderChapter> {
     int? bookId,
     int? position,
     String? title,
+    Value<String?> sourceUrl = const Value.absent(),
     String? originalHtml,
     String? translatedHtml,
     String? translationState,
@@ -3448,6 +3483,7 @@ class ReaderChapter extends DataClass implements Insertable<ReaderChapter> {
     bookId: bookId ?? this.bookId,
     position: position ?? this.position,
     title: title ?? this.title,
+    sourceUrl: sourceUrl.present ? sourceUrl.value : this.sourceUrl,
     originalHtml: originalHtml ?? this.originalHtml,
     translatedHtml: translatedHtml ?? this.translatedHtml,
     translationState: translationState ?? this.translationState,
@@ -3459,6 +3495,7 @@ class ReaderChapter extends DataClass implements Insertable<ReaderChapter> {
       bookId: data.bookId.present ? data.bookId.value : this.bookId,
       position: data.position.present ? data.position.value : this.position,
       title: data.title.present ? data.title.value : this.title,
+      sourceUrl: data.sourceUrl.present ? data.sourceUrl.value : this.sourceUrl,
       originalHtml: data.originalHtml.present
           ? data.originalHtml.value
           : this.originalHtml,
@@ -3479,6 +3516,7 @@ class ReaderChapter extends DataClass implements Insertable<ReaderChapter> {
           ..write('bookId: $bookId, ')
           ..write('position: $position, ')
           ..write('title: $title, ')
+          ..write('sourceUrl: $sourceUrl, ')
           ..write('originalHtml: $originalHtml, ')
           ..write('translatedHtml: $translatedHtml, ')
           ..write('translationState: $translationState, ')
@@ -3493,6 +3531,7 @@ class ReaderChapter extends DataClass implements Insertable<ReaderChapter> {
     bookId,
     position,
     title,
+    sourceUrl,
     originalHtml,
     translatedHtml,
     translationState,
@@ -3506,6 +3545,7 @@ class ReaderChapter extends DataClass implements Insertable<ReaderChapter> {
           other.bookId == this.bookId &&
           other.position == this.position &&
           other.title == this.title &&
+          other.sourceUrl == this.sourceUrl &&
           other.originalHtml == this.originalHtml &&
           other.translatedHtml == this.translatedHtml &&
           other.translationState == this.translationState &&
@@ -3517,6 +3557,7 @@ class ReaderChaptersCompanion extends UpdateCompanion<ReaderChapter> {
   final Value<int> bookId;
   final Value<int> position;
   final Value<String> title;
+  final Value<String?> sourceUrl;
   final Value<String> originalHtml;
   final Value<String> translatedHtml;
   final Value<String> translationState;
@@ -3526,6 +3567,7 @@ class ReaderChaptersCompanion extends UpdateCompanion<ReaderChapter> {
     this.bookId = const Value.absent(),
     this.position = const Value.absent(),
     this.title = const Value.absent(),
+    this.sourceUrl = const Value.absent(),
     this.originalHtml = const Value.absent(),
     this.translatedHtml = const Value.absent(),
     this.translationState = const Value.absent(),
@@ -3536,6 +3578,7 @@ class ReaderChaptersCompanion extends UpdateCompanion<ReaderChapter> {
     required int bookId,
     required int position,
     required String title,
+    this.sourceUrl = const Value.absent(),
     this.originalHtml = const Value.absent(),
     this.translatedHtml = const Value.absent(),
     this.translationState = const Value.absent(),
@@ -3548,6 +3591,7 @@ class ReaderChaptersCompanion extends UpdateCompanion<ReaderChapter> {
     Expression<int>? bookId,
     Expression<int>? position,
     Expression<String>? title,
+    Expression<String>? sourceUrl,
     Expression<String>? originalHtml,
     Expression<String>? translatedHtml,
     Expression<String>? translationState,
@@ -3558,6 +3602,7 @@ class ReaderChaptersCompanion extends UpdateCompanion<ReaderChapter> {
       if (bookId != null) 'book_id': bookId,
       if (position != null) 'position': position,
       if (title != null) 'title': title,
+      if (sourceUrl != null) 'source_url': sourceUrl,
       if (originalHtml != null) 'original_html': originalHtml,
       if (translatedHtml != null) 'translated_html': translatedHtml,
       if (translationState != null) 'translation_state': translationState,
@@ -3570,6 +3615,7 @@ class ReaderChaptersCompanion extends UpdateCompanion<ReaderChapter> {
     Value<int>? bookId,
     Value<int>? position,
     Value<String>? title,
+    Value<String?>? sourceUrl,
     Value<String>? originalHtml,
     Value<String>? translatedHtml,
     Value<String>? translationState,
@@ -3580,6 +3626,7 @@ class ReaderChaptersCompanion extends UpdateCompanion<ReaderChapter> {
       bookId: bookId ?? this.bookId,
       position: position ?? this.position,
       title: title ?? this.title,
+      sourceUrl: sourceUrl ?? this.sourceUrl,
       originalHtml: originalHtml ?? this.originalHtml,
       translatedHtml: translatedHtml ?? this.translatedHtml,
       translationState: translationState ?? this.translationState,
@@ -3601,6 +3648,9 @@ class ReaderChaptersCompanion extends UpdateCompanion<ReaderChapter> {
     }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
+    }
+    if (sourceUrl.present) {
+      map['source_url'] = Variable<String>(sourceUrl.value);
     }
     if (originalHtml.present) {
       map['original_html'] = Variable<String>(originalHtml.value);
@@ -3624,6 +3674,7 @@ class ReaderChaptersCompanion extends UpdateCompanion<ReaderChapter> {
           ..write('bookId: $bookId, ')
           ..write('position: $position, ')
           ..write('title: $title, ')
+          ..write('sourceUrl: $sourceUrl, ')
           ..write('originalHtml: $originalHtml, ')
           ..write('translatedHtml: $translatedHtml, ')
           ..write('translationState: $translationState, ')
@@ -3947,6 +3998,371 @@ class ReaderProgressCompanion extends UpdateCompanion<ReaderProgressData> {
   }
 }
 
+class $ReaderGlossaryEntriesTable extends ReaderGlossaryEntries
+    with TableInfo<$ReaderGlossaryEntriesTable, ReaderGlossaryEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ReaderGlossaryEntriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _bookIdMeta = const VerificationMeta('bookId');
+  @override
+  late final GeneratedColumn<int> bookId = GeneratedColumn<int>(
+    'book_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES reader_books (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _targetMeta = const VerificationMeta('target');
+  @override
+  late final GeneratedColumn<String> target = GeneratedColumn<String>(
+    'target',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _lastUsedAtMeta = const VerificationMeta(
+    'lastUsedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastUsedAt = GeneratedColumn<DateTime>(
+    'last_used_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    bookId,
+    source,
+    target,
+    note,
+    lastUsedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'reader_glossary_entries';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ReaderGlossaryEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('book_id')) {
+      context.handle(
+        _bookIdMeta,
+        bookId.isAcceptableOrUnknown(data['book_id']!, _bookIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bookIdMeta);
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceMeta);
+    }
+    if (data.containsKey('target')) {
+      context.handle(
+        _targetMeta,
+        target.isAcceptableOrUnknown(data['target']!, _targetMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_targetMeta);
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    if (data.containsKey('last_used_at')) {
+      context.handle(
+        _lastUsedAtMeta,
+        lastUsedAt.isAcceptableOrUnknown(
+          data['last_used_at']!,
+          _lastUsedAtMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {bookId, source};
+  @override
+  ReaderGlossaryEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ReaderGlossaryEntry(
+      bookId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}book_id'],
+      )!,
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      target: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}target'],
+      )!,
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      )!,
+      lastUsedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_used_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ReaderGlossaryEntriesTable createAlias(String alias) {
+    return $ReaderGlossaryEntriesTable(attachedDatabase, alias);
+  }
+}
+
+class ReaderGlossaryEntry extends DataClass
+    implements Insertable<ReaderGlossaryEntry> {
+  final int bookId;
+  final String source;
+  final String target;
+  final String note;
+  final DateTime lastUsedAt;
+  const ReaderGlossaryEntry({
+    required this.bookId,
+    required this.source,
+    required this.target,
+    required this.note,
+    required this.lastUsedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['book_id'] = Variable<int>(bookId);
+    map['source'] = Variable<String>(source);
+    map['target'] = Variable<String>(target);
+    map['note'] = Variable<String>(note);
+    map['last_used_at'] = Variable<DateTime>(lastUsedAt);
+    return map;
+  }
+
+  ReaderGlossaryEntriesCompanion toCompanion(bool nullToAbsent) {
+    return ReaderGlossaryEntriesCompanion(
+      bookId: Value(bookId),
+      source: Value(source),
+      target: Value(target),
+      note: Value(note),
+      lastUsedAt: Value(lastUsedAt),
+    );
+  }
+
+  factory ReaderGlossaryEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ReaderGlossaryEntry(
+      bookId: serializer.fromJson<int>(json['bookId']),
+      source: serializer.fromJson<String>(json['source']),
+      target: serializer.fromJson<String>(json['target']),
+      note: serializer.fromJson<String>(json['note']),
+      lastUsedAt: serializer.fromJson<DateTime>(json['lastUsedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'bookId': serializer.toJson<int>(bookId),
+      'source': serializer.toJson<String>(source),
+      'target': serializer.toJson<String>(target),
+      'note': serializer.toJson<String>(note),
+      'lastUsedAt': serializer.toJson<DateTime>(lastUsedAt),
+    };
+  }
+
+  ReaderGlossaryEntry copyWith({
+    int? bookId,
+    String? source,
+    String? target,
+    String? note,
+    DateTime? lastUsedAt,
+  }) => ReaderGlossaryEntry(
+    bookId: bookId ?? this.bookId,
+    source: source ?? this.source,
+    target: target ?? this.target,
+    note: note ?? this.note,
+    lastUsedAt: lastUsedAt ?? this.lastUsedAt,
+  );
+  ReaderGlossaryEntry copyWithCompanion(ReaderGlossaryEntriesCompanion data) {
+    return ReaderGlossaryEntry(
+      bookId: data.bookId.present ? data.bookId.value : this.bookId,
+      source: data.source.present ? data.source.value : this.source,
+      target: data.target.present ? data.target.value : this.target,
+      note: data.note.present ? data.note.value : this.note,
+      lastUsedAt: data.lastUsedAt.present
+          ? data.lastUsedAt.value
+          : this.lastUsedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReaderGlossaryEntry(')
+          ..write('bookId: $bookId, ')
+          ..write('source: $source, ')
+          ..write('target: $target, ')
+          ..write('note: $note, ')
+          ..write('lastUsedAt: $lastUsedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(bookId, source, target, note, lastUsedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ReaderGlossaryEntry &&
+          other.bookId == this.bookId &&
+          other.source == this.source &&
+          other.target == this.target &&
+          other.note == this.note &&
+          other.lastUsedAt == this.lastUsedAt);
+}
+
+class ReaderGlossaryEntriesCompanion
+    extends UpdateCompanion<ReaderGlossaryEntry> {
+  final Value<int> bookId;
+  final Value<String> source;
+  final Value<String> target;
+  final Value<String> note;
+  final Value<DateTime> lastUsedAt;
+  final Value<int> rowid;
+  const ReaderGlossaryEntriesCompanion({
+    this.bookId = const Value.absent(),
+    this.source = const Value.absent(),
+    this.target = const Value.absent(),
+    this.note = const Value.absent(),
+    this.lastUsedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ReaderGlossaryEntriesCompanion.insert({
+    required int bookId,
+    required String source,
+    required String target,
+    this.note = const Value.absent(),
+    this.lastUsedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : bookId = Value(bookId),
+       source = Value(source),
+       target = Value(target);
+  static Insertable<ReaderGlossaryEntry> custom({
+    Expression<int>? bookId,
+    Expression<String>? source,
+    Expression<String>? target,
+    Expression<String>? note,
+    Expression<DateTime>? lastUsedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (bookId != null) 'book_id': bookId,
+      if (source != null) 'source': source,
+      if (target != null) 'target': target,
+      if (note != null) 'note': note,
+      if (lastUsedAt != null) 'last_used_at': lastUsedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ReaderGlossaryEntriesCompanion copyWith({
+    Value<int>? bookId,
+    Value<String>? source,
+    Value<String>? target,
+    Value<String>? note,
+    Value<DateTime>? lastUsedAt,
+    Value<int>? rowid,
+  }) {
+    return ReaderGlossaryEntriesCompanion(
+      bookId: bookId ?? this.bookId,
+      source: source ?? this.source,
+      target: target ?? this.target,
+      note: note ?? this.note,
+      lastUsedAt: lastUsedAt ?? this.lastUsedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (bookId.present) {
+      map['book_id'] = Variable<int>(bookId.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (target.present) {
+      map['target'] = Variable<String>(target.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (lastUsedAt.present) {
+      map['last_used_at'] = Variable<DateTime>(lastUsedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReaderGlossaryEntriesCompanion(')
+          ..write('bookId: $bookId, ')
+          ..write('source: $source, ')
+          ..write('target: $target, ')
+          ..write('note: $note, ')
+          ..write('lastUsedAt: $lastUsedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3960,6 +4376,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ReaderBooksTable readerBooks = $ReaderBooksTable(this);
   late final $ReaderChaptersTable readerChapters = $ReaderChaptersTable(this);
   late final $ReaderProgressTable readerProgress = $ReaderProgressTable(this);
+  late final $ReaderGlossaryEntriesTable readerGlossaryEntries =
+      $ReaderGlossaryEntriesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3975,6 +4393,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     readerBooks,
     readerChapters,
     readerProgress,
+    readerGlossaryEntries,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -4054,6 +4473,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('reader_progress', kind: UpdateKind.update)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'reader_books',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('reader_glossary_entries', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -6991,6 +7417,31 @@ final class $$ReaderBooksTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<
+    $ReaderGlossaryEntriesTable,
+    List<ReaderGlossaryEntry>
+  >
+  _readerGlossaryEntriesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.readerGlossaryEntries,
+        aliasName: 'reader_books__id__reader_glossary_entries__book_id',
+      );
+
+  $$ReaderGlossaryEntriesTableProcessedTableManager
+  get readerGlossaryEntriesRefs {
+    final manager = $$ReaderGlossaryEntriesTableTableManager(
+      $_db,
+      $_db.readerGlossaryEntries,
+    ).filter((f) => f.bookId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _readerGlossaryEntriesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$ReaderBooksTableFilterComposer
@@ -7089,6 +7540,32 @@ class $$ReaderBooksTableFilterComposer
                 $removeJoinBuilderFromRootComposer,
           ),
     );
+    return f(composer);
+  }
+
+  Expression<bool> readerGlossaryEntriesRefs(
+    Expression<bool> Function($$ReaderGlossaryEntriesTableFilterComposer f) f,
+  ) {
+    final $$ReaderGlossaryEntriesTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.readerGlossaryEntries,
+          getReferencedColumn: (t) => t.bookId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ReaderGlossaryEntriesTableFilterComposer(
+                $db: $db,
+                $table: $db.readerGlossaryEntries,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
     return f(composer);
   }
 }
@@ -7229,6 +7706,32 @@ class $$ReaderBooksTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> readerGlossaryEntriesRefs<T extends Object>(
+    Expression<T> Function($$ReaderGlossaryEntriesTableAnnotationComposer a) f,
+  ) {
+    final $$ReaderGlossaryEntriesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.readerGlossaryEntries,
+          getReferencedColumn: (t) => t.bookId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ReaderGlossaryEntriesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.readerGlossaryEntries,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$ReaderBooksTableTableManager
@@ -7247,6 +7750,7 @@ class $$ReaderBooksTableTableManager
           PrefetchHooks Function({
             bool readerChaptersRefs,
             bool readerProgressRefs,
+            bool readerGlossaryEntriesRefs,
           })
         > {
   $$ReaderBooksTableTableManager(_$AppDatabase db, $ReaderBooksTable table)
@@ -7309,12 +7813,17 @@ class $$ReaderBooksTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({readerChaptersRefs = false, readerProgressRefs = false}) {
+              ({
+                readerChaptersRefs = false,
+                readerProgressRefs = false,
+                readerGlossaryEntriesRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (readerChaptersRefs) db.readerChapters,
                     if (readerProgressRefs) db.readerProgress,
+                    if (readerGlossaryEntriesRefs) db.readerGlossaryEntries,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -7361,6 +7870,27 @@ class $$ReaderBooksTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (readerGlossaryEntriesRefs)
+                        await $_getPrefetchedData<
+                          ReaderBook,
+                          $ReaderBooksTable,
+                          ReaderGlossaryEntry
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ReaderBooksTableReferences
+                              ._readerGlossaryEntriesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ReaderBooksTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).readerGlossaryEntriesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.bookId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -7381,7 +7911,11 @@ typedef $$ReaderBooksTableProcessedTableManager =
       $$ReaderBooksTableUpdateCompanionBuilder,
       (ReaderBook, $$ReaderBooksTableReferences),
       ReaderBook,
-      PrefetchHooks Function({bool readerChaptersRefs, bool readerProgressRefs})
+      PrefetchHooks Function({
+        bool readerChaptersRefs,
+        bool readerProgressRefs,
+        bool readerGlossaryEntriesRefs,
+      })
     >;
 typedef $$ReaderChaptersTableCreateCompanionBuilder =
     ReaderChaptersCompanion Function({
@@ -7389,6 +7923,7 @@ typedef $$ReaderChaptersTableCreateCompanionBuilder =
       required int bookId,
       required int position,
       required String title,
+      Value<String?> sourceUrl,
       Value<String> originalHtml,
       Value<String> translatedHtml,
       Value<String> translationState,
@@ -7400,6 +7935,7 @@ typedef $$ReaderChaptersTableUpdateCompanionBuilder =
       Value<int> bookId,
       Value<int> position,
       Value<String> title,
+      Value<String?> sourceUrl,
       Value<String> originalHtml,
       Value<String> translatedHtml,
       Value<String> translationState,
@@ -7471,6 +8007,11 @@ class $$ReaderChaptersTableFilterComposer
 
   ColumnFilters<String> get title => $composableBuilder(
     column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceUrl => $composableBuilder(
+    column: $table.sourceUrl,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7567,6 +8108,11 @@ class $$ReaderChaptersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get sourceUrl => $composableBuilder(
+    column: $table.sourceUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get originalHtml => $composableBuilder(
     column: $table.originalHtml,
     builder: (column) => ColumnOrderings(column),
@@ -7628,6 +8174,9 @@ class $$ReaderChaptersTableAnnotationComposer
 
   GeneratedColumn<String> get title =>
       $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceUrl =>
+      $composableBuilder(column: $table.sourceUrl, builder: (column) => column);
 
   GeneratedColumn<String> get originalHtml => $composableBuilder(
     column: $table.originalHtml,
@@ -7730,6 +8279,7 @@ class $$ReaderChaptersTableTableManager
                 Value<int> bookId = const Value.absent(),
                 Value<int> position = const Value.absent(),
                 Value<String> title = const Value.absent(),
+                Value<String?> sourceUrl = const Value.absent(),
                 Value<String> originalHtml = const Value.absent(),
                 Value<String> translatedHtml = const Value.absent(),
                 Value<String> translationState = const Value.absent(),
@@ -7739,6 +8289,7 @@ class $$ReaderChaptersTableTableManager
                 bookId: bookId,
                 position: position,
                 title: title,
+                sourceUrl: sourceUrl,
                 originalHtml: originalHtml,
                 translatedHtml: translatedHtml,
                 translationState: translationState,
@@ -7750,6 +8301,7 @@ class $$ReaderChaptersTableTableManager
                 required int bookId,
                 required int position,
                 required String title,
+                Value<String?> sourceUrl = const Value.absent(),
                 Value<String> originalHtml = const Value.absent(),
                 Value<String> translatedHtml = const Value.absent(),
                 Value<String> translationState = const Value.absent(),
@@ -7759,6 +8311,7 @@ class $$ReaderChaptersTableTableManager
                 bookId: bookId,
                 position: position,
                 title: title,
+                sourceUrl: sourceUrl,
                 originalHtml: originalHtml,
                 translatedHtml: translatedHtml,
                 translationState: translationState,
@@ -8252,6 +8805,347 @@ typedef $$ReaderProgressTableProcessedTableManager =
       ReaderProgressData,
       PrefetchHooks Function({bool bookId, bool chapterId})
     >;
+typedef $$ReaderGlossaryEntriesTableCreateCompanionBuilder =
+    ReaderGlossaryEntriesCompanion Function({
+      required int bookId,
+      required String source,
+      required String target,
+      Value<String> note,
+      Value<DateTime> lastUsedAt,
+      Value<int> rowid,
+    });
+typedef $$ReaderGlossaryEntriesTableUpdateCompanionBuilder =
+    ReaderGlossaryEntriesCompanion Function({
+      Value<int> bookId,
+      Value<String> source,
+      Value<String> target,
+      Value<String> note,
+      Value<DateTime> lastUsedAt,
+      Value<int> rowid,
+    });
+
+final class $$ReaderGlossaryEntriesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $ReaderGlossaryEntriesTable,
+          ReaderGlossaryEntry
+        > {
+  $$ReaderGlossaryEntriesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ReaderBooksTable _bookIdTable(_$AppDatabase db) => db.readerBooks
+      .createAlias('reader_glossary_entries__book_id__reader_books__id');
+
+  $$ReaderBooksTableProcessedTableManager get bookId {
+    final $_column = $_itemColumn<int>('book_id')!;
+
+    final manager = $$ReaderBooksTableTableManager(
+      $_db,
+      $_db.readerBooks,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_bookIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ReaderGlossaryEntriesTableFilterComposer
+    extends Composer<_$AppDatabase, $ReaderGlossaryEntriesTable> {
+  $$ReaderGlossaryEntriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get target => $composableBuilder(
+    column: $table.target,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastUsedAt => $composableBuilder(
+    column: $table.lastUsedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ReaderBooksTableFilterComposer get bookId {
+    final $$ReaderBooksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.bookId,
+      referencedTable: $db.readerBooks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ReaderBooksTableFilterComposer(
+            $db: $db,
+            $table: $db.readerBooks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ReaderGlossaryEntriesTableOrderingComposer
+    extends Composer<_$AppDatabase, $ReaderGlossaryEntriesTable> {
+  $$ReaderGlossaryEntriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get target => $composableBuilder(
+    column: $table.target,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastUsedAt => $composableBuilder(
+    column: $table.lastUsedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ReaderBooksTableOrderingComposer get bookId {
+    final $$ReaderBooksTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.bookId,
+      referencedTable: $db.readerBooks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ReaderBooksTableOrderingComposer(
+            $db: $db,
+            $table: $db.readerBooks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ReaderGlossaryEntriesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ReaderGlossaryEntriesTable> {
+  $$ReaderGlossaryEntriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get target =>
+      $composableBuilder(column: $table.target, builder: (column) => column);
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastUsedAt => $composableBuilder(
+    column: $table.lastUsedAt,
+    builder: (column) => column,
+  );
+
+  $$ReaderBooksTableAnnotationComposer get bookId {
+    final $$ReaderBooksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.bookId,
+      referencedTable: $db.readerBooks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ReaderBooksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.readerBooks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ReaderGlossaryEntriesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ReaderGlossaryEntriesTable,
+          ReaderGlossaryEntry,
+          $$ReaderGlossaryEntriesTableFilterComposer,
+          $$ReaderGlossaryEntriesTableOrderingComposer,
+          $$ReaderGlossaryEntriesTableAnnotationComposer,
+          $$ReaderGlossaryEntriesTableCreateCompanionBuilder,
+          $$ReaderGlossaryEntriesTableUpdateCompanionBuilder,
+          (ReaderGlossaryEntry, $$ReaderGlossaryEntriesTableReferences),
+          ReaderGlossaryEntry,
+          PrefetchHooks Function({bool bookId})
+        > {
+  $$ReaderGlossaryEntriesTableTableManager(
+    _$AppDatabase db,
+    $ReaderGlossaryEntriesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ReaderGlossaryEntriesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$ReaderGlossaryEntriesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ReaderGlossaryEntriesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> bookId = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String> target = const Value.absent(),
+                Value<String> note = const Value.absent(),
+                Value<DateTime> lastUsedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ReaderGlossaryEntriesCompanion(
+                bookId: bookId,
+                source: source,
+                target: target,
+                note: note,
+                lastUsedAt: lastUsedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required int bookId,
+                required String source,
+                required String target,
+                Value<String> note = const Value.absent(),
+                Value<DateTime> lastUsedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ReaderGlossaryEntriesCompanion.insert(
+                bookId: bookId,
+                source: source,
+                target: target,
+                note: note,
+                lastUsedAt: lastUsedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ReaderGlossaryEntriesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({bookId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (bookId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.bookId,
+                                referencedTable:
+                                    $$ReaderGlossaryEntriesTableReferences
+                                        ._bookIdTable(db),
+                                referencedColumn:
+                                    $$ReaderGlossaryEntriesTableReferences
+                                        ._bookIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ReaderGlossaryEntriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ReaderGlossaryEntriesTable,
+      ReaderGlossaryEntry,
+      $$ReaderGlossaryEntriesTableFilterComposer,
+      $$ReaderGlossaryEntriesTableOrderingComposer,
+      $$ReaderGlossaryEntriesTableAnnotationComposer,
+      $$ReaderGlossaryEntriesTableCreateCompanionBuilder,
+      $$ReaderGlossaryEntriesTableUpdateCompanionBuilder,
+      (ReaderGlossaryEntry, $$ReaderGlossaryEntriesTableReferences),
+      ReaderGlossaryEntry,
+      PrefetchHooks Function({bool bookId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -8276,4 +9170,6 @@ class $AppDatabaseManager {
       $$ReaderChaptersTableTableManager(_db, _db.readerChapters);
   $$ReaderProgressTableTableManager get readerProgress =>
       $$ReaderProgressTableTableManager(_db, _db.readerProgress);
+  $$ReaderGlossaryEntriesTableTableManager get readerGlossaryEntries =>
+      $$ReaderGlossaryEntriesTableTableManager(_db, _db.readerGlossaryEntries);
 }
