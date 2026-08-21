@@ -149,6 +149,7 @@ class _EventEditPageState extends State<EventEditPage>
   static const _toolLabels = {
     'read_content': '读取正文',
     'replace_text': '修改文字',
+    'polish_text': '润色',
     'append_text': '续写正文',
     'set_content': '重写全文',
     'read_outline': '读取大纲',
@@ -820,6 +821,7 @@ class _EventEditPageState extends State<EventEditPage>
         Future<String?> Function()? revert;
         switch (name) {
           case 'replace_text':
+          case 'polish_text':
             revert = () async {
               final oldT = args['old_text'] as String? ?? '';
               final newT = args['new_text'] as String? ?? '';
@@ -1496,30 +1498,36 @@ class _EventEditPageState extends State<EventEditPage>
                   ),
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: SubmitOnEnter(
-                            onSubmit: _send,
-                            child: TextField(
-                              controller: _chatCtrl,
-                              minLines: 1,
-                              maxLines: 3,
-                              decoration: const InputDecoration(
-                                hintText: '快捷指令:Enter 发送,Shift+Enter 换行',
-                                border: OutlineInputBorder(),
-                                isDense: true,
+                        _quickOpBar(),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SubmitOnEnter(
+                                onSubmit: _send,
+                                child: TextField(
+                                  controller: _chatCtrl,
+                                  minLines: 1,
+                                  maxLines: 3,
+                                  decoration: const InputDecoration(
+                                    hintText: '快捷指令:Enter 发送,Shift+Enter 换行',
+                                    border: OutlineInputBorder(),
+                                    isDense: true,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton.filled(
-                          onPressed: _busy
-                              ? () => setState(() => _stopRequested = true)
-                              : _send,
-                          icon: Icon(_busy ? Icons.stop : Icons.send),
-                          tooltip: _busy ? '停止' : '发送',
+                            const SizedBox(width: 8),
+                            IconButton.filled(
+                              onPressed: _busy
+                                  ? () => setState(() => _stopRequested = true)
+                                  : _send,
+                              icon: Icon(_busy ? Icons.stop : Icons.send),
+                              tooltip: _busy ? '停止' : '发送',
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1533,6 +1541,42 @@ class _EventEditPageState extends State<EventEditPage>
         ),
       ),
     );
+  }
+
+  /// 快捷操作:按钮直接发出定式指令,走同一条工具循环与审批
+  static const _quickOps = {
+    '润色': '请对本节正文做润色。通读后逐段用 polish_text 处理,只修标点、分段、错字与读不通的地方,'
+        '不改写原句、不增删内容;本来干净的段落跳过。',
+    '补齐': '请对本节正文做补齐。通读后找出我埋在正文里的待办标记(括号里那些不属于故事的元指令),'
+        '先列出清单和位置,再逐条落实,并把标记连同括号一起删掉。',
+  };
+
+  Widget _quickOpBar() => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Wrap(
+          spacing: 6,
+          children: [
+            for (final e in _quickOps.entries)
+              ActionChip(
+                label: Text(e.key, style: const TextStyle(fontSize: 12)),
+                visualDensity: VisualDensity.compact,
+                onPressed: _busy ? null : () => _runQuickOp(e.key, e.value),
+              ),
+          ],
+        ),
+      );
+
+  /// 发出快捷指令;输入框有草稿时不覆盖,作为补充要求一起发
+  void _runQuickOp(String label, String instruction) {
+    if (_busy) return;
+    if (_contentCtrl.text.trim().isEmpty) {
+      _toast('正文还是空的,$label 无从下手', error: true);
+      return;
+    }
+    final draft = _chatCtrl.text.trim();
+    _chatCtrl.text =
+        draft.isEmpty ? instruction : '$instruction\n\n补充要求:$draft';
+    _send();
   }
 
   /// 变更卡:感知本轮改动,接受保留 / 拒绝回滚
@@ -1615,7 +1659,8 @@ class _EventEditPageState extends State<EventEditPage>
     }
 
     final summary = switch (name) {
-      'replace_text' => '$label “${s(args['old_text'])}” → “${s(args['new_text'])}”',
+      'replace_text' || 'polish_text' =>
+        '$label “${s(args['old_text'])}” → “${s(args['new_text'])}”',
       'append_text' => '$label +${(args['text']?.toString() ?? '').length} 字',
       'set_content' => '$label(${(args['text']?.toString() ?? '').length} 字)',
       'set_outline' => '$label “${s(args['text'])}”',
@@ -1708,6 +1753,7 @@ class _EventEditPageState extends State<EventEditPage>
     final widgets = <Widget>[];
     switch (name) {
       case 'replace_text':
+      case 'polish_text':
         widgets.add(block('- ${args['old_text'] ?? ''}',
             bg: Colors.red.withValues(alpha: 0.08), fg: Colors.red.shade700));
         widgets.add(block('+ ${args['new_text'] ?? ''}',
@@ -1858,7 +1904,8 @@ class _EventEditPageState extends State<EventEditPage>
     }
 
     return switch (name) {
-      'replace_text' => '$label “${s(args['old_text'])}” → “${s(args['new_text'])}”',
+      'replace_text' || 'polish_text' =>
+        '$label “${s(args['old_text'])}” → “${s(args['new_text'])}”',
       'append_text' => '$label +${(args['text']?.toString() ?? '').length} 字',
       'set_content' => '$label(${(args['text']?.toString() ?? '').length} 字)',
       'set_outline' => '$label “${s(args['text'])}”',
@@ -2202,31 +2249,37 @@ class _EventEditPageState extends State<EventEditPage>
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: SubmitOnEnter(
-                    onSubmit: _send,
-                    child: TextField(
-                      controller: _chatCtrl,
-                      focusNode: _chatFocus,
-                      minLines: 1,
-                      maxLines: 4,
-                      decoration: const InputDecoration(
-                        hintText: '与 AI 对话写作:Enter 发送,Shift+Enter 换行',
-                        border: OutlineInputBorder(),
-                        isDense: true,
+                _quickOpBar(),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SubmitOnEnter(
+                        onSubmit: _send,
+                        child: TextField(
+                          controller: _chatCtrl,
+                          focusNode: _chatFocus,
+                          minLines: 1,
+                          maxLines: 4,
+                          decoration: const InputDecoration(
+                            hintText: '与 AI 对话写作:Enter 发送,Shift+Enter 换行',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  onPressed: _busy
-                      ? () => setState(() => _stopRequested = true)
-                      : _send,
-                  icon: Icon(_busy ? Icons.stop : Icons.send),
-                  tooltip: _busy ? '停止' : '发送',
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      onPressed: _busy
+                          ? () => setState(() => _stopRequested = true)
+                          : _send,
+                      icon: Icon(_busy ? Icons.stop : Icons.send),
+                      tooltip: _busy ? '停止' : '发送',
+                    ),
+                  ],
                 ),
               ],
             ),

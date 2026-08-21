@@ -541,6 +541,69 @@ class _EntryEditPageState extends State<EntryEditPage> {
     }
   }
 
+  /// Keep card content readable to image backends by separating visual
+  /// information into stable sections. Values are never rewritten by an LLM.
+  String _imagePromptFromCard(String name, List<String> fields) {
+    final groups = <String, List<String>>{
+      'SUBJECT': ['${widget.kind.label}: $name'],
+      'APPEARANCE': [],
+      'POSE AND EXPRESSION': [],
+      'COSTUME AND ACCESSORIES': [],
+      'ENVIRONMENT': [],
+      'LIGHTING AND COLOR': [],
+      'CAMERA AND COMPOSITION': [],
+      'STYLE': [],
+      'OTHER VISUAL DETAILS': [],
+    };
+    for (final raw in fields) {
+      final split = raw.split(':');
+      final label = split.first.toLowerCase();
+      final visual = raw.trim();
+      if (visual.isEmpty) continue;
+      String group;
+      if (label.contains('外貌') ||
+          label.contains('基本') ||
+          label.contains('身形')) {
+        group = 'APPEARANCE';
+      } else if (label.contains('性格') ||
+          label.contains('姿态') ||
+          label.contains('表情')) {
+        group = 'POSE AND EXPRESSION';
+      } else if (label.contains('服') ||
+          label.contains('装') ||
+          label.contains('饰') ||
+          label.contains('装备')) {
+        group = 'COSTUME AND ACCESSORIES';
+      } else if (label.contains('位置') ||
+          label.contains('环境') ||
+          label.contains('场景')) {
+        group = 'ENVIRONMENT';
+      } else if (label.contains('光') ||
+          label.contains('色') ||
+          label.contains('氛围')) {
+        group = 'LIGHTING AND COLOR';
+      } else if (label.contains('镜头') ||
+          label.contains('构图') ||
+          label.contains('视角')) {
+        group = 'CAMERA AND COMPOSITION';
+      } else if (label.contains('画风') || label.contains('风格')) {
+        group = 'STYLE';
+      } else {
+        group = 'OTHER VISUAL DETAILS';
+      }
+      groups[group]!.add(visual);
+    }
+    final sections = <String>[];
+    for (final entry in groups.entries) {
+      if (entry.value.isEmpty) continue;
+      sections.add('[${entry.key}]\n${entry.value.join('\n')}');
+    }
+    sections.add(
+      '[RENDERING]\ndetailed illustration, clean composition, single subject, no text',
+    );
+    return sections.join('\n\n');
+  }
+
   /// 用卡面内容生图
   Future<void> _generateImage() async {
     if (_imageBusy) return;
@@ -549,18 +612,17 @@ class _EntryEditPageState extends State<EntryEditPage> {
       _toast('先填名称再生图', error: true);
       return;
     }
-    final filled = [
+    final filled = <String>[
       for (final f in _fields)
         if (_fieldCtrls[f.key]!.text.trim().isNotEmpty)
           '${f.label}:${_fieldCtrls[f.key]!.text.trim()}',
-    ].join('\n');
-    final card = '${widget.kind.label}「$name」\n$filled';
+    ];
+    final card = _imagePromptFromCard(name, filled);
     setState(() => _imageBusy = true);
     try {
       // Keep the card text intact; prompt optimization is disabled for native
       // st-chat8 workflows and their own prompt syntax.
-      final prompt =
-          '$card\nhigh quality illustration, single subject, clean composition, no text';
+      final prompt = card;
       final native = await StChatu8Store.load();
       final bytes = native != null
           ? await StChatu8ImageClient.generate(native, prompt)

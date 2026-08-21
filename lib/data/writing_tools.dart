@@ -37,6 +37,24 @@ final writingToolSchemas = [
   {
     'type': 'function',
     'function': {
+      'name': 'polish_text',
+      'description': '润色专用替换:只修标点、分段、错字与读不通的地方,句子骨架与作者的用词必须留着;'
+          'old_text 须与正文逐字一致且全文唯一,一次只润一段。'
+          '系统会校验改动幅度,判定为重写或增添内容时直接拒绝,这是硬限制;'
+          '确实需要改写或补写时改用 replace_text,并向作者说明理由',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'old_text': {'type': 'string', 'description': '要润色的原文片段(逐字)'},
+          'new_text': {'type': 'string', 'description': '润色后的文字'},
+        },
+        'required': ['old_text', 'new_text'],
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
       'name': 'append_text',
       'description': '在正文结尾追加内容(续写)',
       'parameters': {
@@ -191,6 +209,71 @@ final writingToolSchemas = [
   },
 ];
 
+/// 润色的改动预算:剥离标点空白后,文字的编辑距离占原文比例上限
+const _polishMaxRatio = 0.5;
+
+/// 润色的增量预算:文字只能微增(补漏字),涨得多就是在加描写
+const _polishMaxGrowRatio = 0.1;
+
+/// 单次润色片段的字数上限:逼着一段一段来,改动小才便于作者审批
+const polishMaxLen = 1200;
+
+/// 标点与空白;剥掉后再比对,所以调标点、改分段永远不占改动预算
+final _punctSpace = RegExp(r'[\s\p{P}\p{S}]', unicode: true);
+
+/// 只留文字的骨架,润色比对的基准
+String _coreText(String s) => s.replaceAll(_punctSpace, '');
+
+/// 编辑距离(滚动两行,只为算改动幅度,不需要回溯路径)
+int _editDistance(String a, String b) {
+  if (a == b) return 0;
+  if (a.isEmpty) return b.length;
+  if (b.isEmpty) return a.length;
+  var prev = List<int>.generate(b.length + 1, (i) => i);
+  var cur = List<int>.filled(b.length + 1, 0);
+  for (var i = 1; i <= a.length; i++) {
+    cur[0] = i;
+    for (var j = 1; j <= b.length; j++) {
+      final cost = a.codeUnitAt(i - 1) == b.codeUnitAt(j - 1) ? 0 : 1;
+      final del = prev[j] + 1;
+      final ins = cur[j - 1] + 1;
+      final sub = prev[j - 1] + cost;
+      cur[j] = del < ins ? (del < sub ? del : sub) : (ins < sub ? ins : sub);
+    }
+    final swap = prev;
+    prev = cur;
+    cur = swap;
+  }
+  return prev[b.length];
+}
+
+/// 润色守则的系统层校验:通过返回 null,否则返回给模型的失败原因。
+/// 标点、分段免费;错字、漏字、赘词在预算内;重写句子与增添内容挡下。
+String? polishRejection(String oldText, String newText) {
+  if (oldText.length > polishMaxLen) {
+    return '失败:润色片段过长(${oldText.length} 字),请一段一段来,单次不超过 $polishMaxLen 字';
+  }
+  final oldCore = _coreText(oldText);
+  final newCore = _coreText(newText);
+  // 纯标点与分段调整,直接放行
+  if (oldCore == newCore) return null;
+  final grow = newCore.length - oldCore.length;
+  final growLimit = (oldCore.length * _polishMaxGrowRatio).floor() + 2;
+  if (grow > growLimit) {
+    return '失败:润色不得增添内容(文字从 ${oldCore.length} 字涨到 ${newCore.length} 字);'
+        '只修标点、分段、错字与读不通的地方。要补描写请改用 replace_text 并说明理由';
+  }
+  final base = oldCore.isEmpty ? 1 : oldCore.length;
+  final dist = _editDistance(oldCore, newCore);
+  final limit = (base * _polishMaxRatio).floor();
+  if (dist > (limit < 1 ? 1 : limit)) {
+    return '失败:改动幅度 ${(dist * 100 / base).round()}% 超出润色上限 '
+        '${(_polishMaxRatio * 100).round()}%,这是重写不是润色;'
+        '请留住原句骨架与作者的用词,或改用 replace_text 并向作者说明理由';
+  }
+  return null;
+}
+
 /// 执行正文编辑工具;设定检索类工具转发给 [NovelToolExecutor]
 class WritingToolExecutor {
   WritingToolExecutor({
@@ -244,19 +327,9 @@ class WritingToolExecutor {
             frag.length <= 80 ? frag : '${frag.substring(0, 80)}…';
         return '$numbered\n\n【作者当前高亮($range)】$brief';
       case 'replace_text':
-        final oldText = args['old_text'] as String? ?? '';
-        final newText = args['new_text'] as String? ?? '';
-        if (oldText.isEmpty) return '失败:old_text 为空';
-        final content = readContent();
-        final count = oldText.allMatches(content).length;
-        if (count == 0) {
-          return '失败:正文中未找到该片段,请先 read_content 核对原文';
-        }
-        if (count > 1) {
-          return '失败:该片段在正文中出现 $count 处,请提供更长的唯一片段';
-        }
-        writeContent(content.replaceFirst(oldText, newText));
-        return '已替换';
+        return _replaceOne(args, polish: false);
+      case 'polish_text':
+        return _replaceOne(args, polish: true);
       case 'append_text':
         final text = args['text'] as String? ?? '';
         if (text.isEmpty) return '失败:text 为空';
@@ -286,6 +359,30 @@ class WritingToolExecutor {
       default:
         return lookup.call(name, args);
     }
+  }
+
+  /// 唯一匹配替换;polish 为真时先过润色守则校验
+  String _replaceOne(Map<String, dynamic> args, {required bool polish}) {
+    final oldText = args['old_text'] as String? ?? '';
+    final newText = args['new_text'] as String? ?? '';
+    if (oldText.isEmpty) return '失败:old_text 为空';
+    final content = readContent();
+    final count = oldText.allMatches(content).length;
+    if (count == 0) {
+      return '失败:正文中未找到该片段,请先 read_content 核对原文';
+    }
+    if (count > 1) {
+      return '失败:该片段在正文中出现 $count 处,请提供更长的唯一片段';
+    }
+    if (polish) {
+      final rejection = polishRejection(oldText, newText);
+      if (rejection != null) return rejection;
+    }
+    writeContent(content.replaceFirst(oldText, newText));
+    if (!polish) return '已替换';
+    return _coreText(oldText) == _coreText(newText)
+        ? '已润色(只动了标点与分段)'
+        : '已润色';
   }
 
   Future<String> _upsertSet(Map<String, dynamic> args) async {
