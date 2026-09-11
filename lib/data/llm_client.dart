@@ -51,12 +51,19 @@ class LlmClient {
     throw LlmException(msg);
   }
 
-  /// 400 仅在错误文本提及 tool/function 时才判定为不支持工具,避免掩盖真实错误
+  /// 400 仅在错误文本指向"不认识/不支持工具"时才判定为不支持工具,
+  /// 避免把 tool_call_id 配对错误、额度/参数错误等真实故障误报成模型没有 function calling
   static Never _throwToolsOr400(String err) {
     final low = err.toLowerCase();
-    if (low.contains('tool') || low.contains('function')) {
-      throw ToolsUnsupportedException(err);
-    }
+    final mentionsTool = low.contains('tool') || low.contains('function');
+    final pairing = low.contains('tool_call_id') || low.contains('tool_calls');
+    final unsupported = mentionsTool &&
+        !pairing &&
+        (low.contains('support') ||
+            low.contains('unknown') ||
+            low.contains('unrecognized') ||
+            low.contains('no such'));
+    if (unsupported) throw ToolsUnsupportedException(err);
     throw LlmException('HTTP 400:$err');
   }
 
@@ -100,6 +107,20 @@ class LlmClient {
   static dynamic _firstChoice(dynamic data) {
     final choices = data is Map ? data['choices'] : null;
     return (choices is List && choices.isNotEmpty) ? choices[0] : null;
+  }
+
+  /// 解析工具参数;解码不出内容时给出 null,调用方必须放弃执行——
+  /// 参数被流式分片拼坏或截断时,写类工具拿到空参数会做出破坏性动作(如把正文清空)
+  static Map<String, dynamic>? decodeToolArgsOrNull(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return const {};
+    try {
+      final d = jsonDecode(t);
+      if (d is Map) return d.cast<String, dynamic>();
+    } catch (_) {}
+    // 拼接损坏(如重复帧):提取首个平衡 JSON 对象;提取不到就判为协议损坏
+    final extracted = decodeToolArgs(t);
+    return extracted.isEmpty ? null : extracted;
   }
 
   /// 拉取可用模型列表(GET /models)
@@ -413,12 +434,17 @@ class LlmClient {
         for (final tc in toolCalls) {
           final fn = tc['function'] as Map<String, dynamic>? ?? {};
           final name = fn['name'] as String? ?? '';
-          final args = decodeToolArgs(fn['arguments'] as String? ?? '');
+          final args = decodeToolArgsOrNull(fn['arguments'] as String? ?? '');
           String result;
-          try {
-            result = await onToolCall(name, args);
-          } catch (e) {
-            result = '工具执行失败：$e';
+          if (args == null) {
+            result = '失败:参数解析失败(参数不是合法 JSON,可能是分片拼接损坏);'
+                '请重新调用 $name 并给出完整参数';
+          } else {
+            try {
+              result = await onToolCall(name, args);
+            } catch (e) {
+              result = '工具执行失败：$e';
+            }
           }
           messages.add({
             'role': 'tool',
@@ -427,7 +453,7 @@ class LlmClient {
           });
         }
       }
-      throw LlmException('工具调用轮次超限,请重试');
+      throw LlmException('工具调用轮次超限($maxRounds 次),请重试');
     } on ToolsUnsupportedException {
       rethrow;
     } catch (e) {
@@ -443,7 +469,7 @@ class LlmClient {
     required List<Map<String, dynamic>> tools,
     required Future<String> Function(String name, Map<String, dynamic> args)
     onToolCall,
-    int maxRounds = 1000,
+    int maxRounds = 60,
   }) async {
     if (s.model.trim().isEmpty) {
       throw LlmException('请先在设置中配置 LLM API 与模型');
@@ -484,12 +510,17 @@ class LlmClient {
         for (final tc in toolCalls) {
           final fn = tc['function'] as Map<String, dynamic>? ?? {};
           final name = fn['name'] as String? ?? '';
-          final args = decodeToolArgs(fn['arguments'] as String? ?? '');
+          final args = decodeToolArgsOrNull(fn['arguments'] as String? ?? '');
           String result;
-          try {
-            result = await onToolCall(name, args);
-          } catch (e) {
-            result = '工具执行失败：$e';
+          if (args == null) {
+            result = '失败:参数解析失败(参数不是合法 JSON,可能是分片拼接损坏);'
+                '请重新调用 $name 并给出完整参数';
+          } else {
+            try {
+              result = await onToolCall(name, args);
+            } catch (e) {
+              result = '工具执行失败：$e';
+            }
           }
           messages.add({
             'role': 'tool',
@@ -498,7 +529,8 @@ class LlmClient {
           });
         }
       }
-      throw LlmException('工具调用轮次超限,请重试');
+      throw LlmException('本轮工具调用已达上限($maxRounds 次):已完成的改动都保留着,'
+          '再发一条消息让我接着做即可');
     } on ToolsUnsupportedException {
       rethrow;
     } catch (e) {
@@ -517,7 +549,7 @@ class LlmClient {
     void Function(String delta)? onDelta,
     void Function(String name)? onToolStart,
     bool Function()? shouldStop,
-    int maxRounds = 1000,
+    int maxRounds = 60,
   }) async {
     if (s.model.trim().isEmpty) {
       throw LlmException('请先在设置中配置 LLM API 与模型');
@@ -657,12 +689,17 @@ class LlmClient {
               continue;
             }
             onToolStart?.call(name);
-            final args = decodeToolArgs(fn['arguments'] as String? ?? '');
+            final args = decodeToolArgsOrNull(fn['arguments'] as String? ?? '');
             String result;
-            try {
-              result = await onToolCall(name, args);
-            } catch (e) {
-              result = '工具执行失败：$e';
+            if (args == null) {
+              result = '失败:参数解析失败(参数不是合法 JSON,可能是分片拼接损坏);'
+                  '请重新调用 $name 并给出完整参数';
+            } else {
+              try {
+                result = await onToolCall(name, args);
+              } catch (e) {
+                result = '工具执行失败：$e';
+              }
             }
             messages.add({
               'role': 'tool',
@@ -679,7 +716,8 @@ class LlmClient {
         messages.add({'role': 'assistant', 'content': contentBuf});
         return contentBuf;
       }
-      throw LlmException('工具调用轮次超限,请重试');
+      throw LlmException('本轮工具调用已达上限($maxRounds 次):已完成的改动都保留着,'
+          '再发一条消息让我接着做即可');
     } on ToolsUnsupportedException {
       rethrow;
     } catch (e) {

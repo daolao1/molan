@@ -37,6 +37,22 @@ const novelToolSchemas = [
   {
     'type': 'function',
     'function': {
+      'name': 'list_entries',
+      'description': '列出设定库里的条目名(可按类型过滤);确认"有没有这张卡、名字怎么写"时用它,别猜',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'kind': {
+            'type': 'string',
+            'enum': ['character', 'location', 'item', 'scene', 'lore', 'foreshadow'],
+          }
+        },
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
       'name': 'list_chapters',
       'description': '全书章节与小节目录:每章标题及其小节序号、名称、大纲、字数',
       'parameters': {'type': 'object', 'properties': <String, dynamic>{}},
@@ -46,14 +62,35 @@ const novelToolSchemas = [
     'type': 'function',
     'function': {
       'name': 'get_event_content',
-      'description': '读取某章某小节的正文(序号见 list_chapters);过长会截断',
+      'description': '读取某章某小节的正文(序号见 list_chapters);超过 4000 字只给一端,'
+          'from_end=true 时取结尾。衔接上一节文风、承接前情时读它的结尾',
       'parameters': {
         'type': 'object',
         'properties': {
           'chapter': {'type': 'integer', 'description': '章节序号,从 1 起'},
           'event': {'type': 'integer', 'description': '小节序号,从 1 起'},
+          'from_end': {
+            'type': 'boolean',
+            'description': 'true=取正文结尾(默认取开头)'
+          },
         },
         'required': ['chapter', 'event'],
+      },
+    },
+  },
+  {
+    'type': 'function',
+    'function': {
+      'name': 'search_content',
+      'description': '在全书正文里检索关键词或句子,返回所在章/小节/行号与上下文;'
+          '呼应前文、核对伏笔与他人已写过的措辞时用它查原文,不要凭记忆编造',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'keyword': {'type': 'string', 'description': '要检索的词或句子(2 字以上)'},
+          'limit': {'type': 'integer', 'description': '最多返回多少处,默认 12'},
+        },
+        'required': ['keyword'],
       },
     },
   },
@@ -81,10 +118,53 @@ class NovelToolExecutor {
       case 'list_chapters':
         return _listChapters();
       case 'get_event_content':
-        return _eventContent(args['chapter'], args['event']);
+        return _eventContent(args['chapter'], args['event'],
+            fromEnd: args['from_end'] == true);
+      case 'search_content':
+        return _searchContent(args['keyword']?.toString() ?? '',
+            limit: args['limit'] is int ? args['limit'] as int : 12);
       default:
         return '未知工具:$name';
     }
+  }
+
+  /// 全书正文关键词检索:给模型一条"回原文核对"的实路,而不是靠记忆编造
+  Future<String> _searchContent(String keyword, {int limit = 12}) async {
+    final kw = keyword.trim();
+    if (kw.length < 2) return '失败:keyword 至少 2 个字';
+    final cap = limit.clamp(1, 30);
+    final chapters = await db.watchChapters(novelId).first;
+    final buf = StringBuffer();
+    var total = 0;
+    for (var c = 0; c < chapters.length; c++) {
+      final events = await db.eventsOf(chapters[c].id);
+      for (var i = 0; i < events.length; i++) {
+        final content = events[i].content;
+        if (content.isEmpty) continue;
+        var from = 0;
+        while (true) {
+          final at = content.indexOf(kw, from);
+          if (at < 0) break;
+          total++;
+          if (total <= cap) {
+            final line = '\n'.allMatches(content.substring(0, at)).length + 1;
+            final start = at - 30 < 0 ? 0 : at - 30;
+            final end = at + kw.length + 30 > content.length
+                ? content.length
+                : at + kw.length + 30;
+            final snippet =
+                content.substring(start, end).replaceAll('\n', '⏎');
+            buf.writeln(
+                '第 ${c + 1} 章《${chapters[c].title}》小节 ${i + 1}「${events[i].name}」第 $line 行:'
+                '…$snippet…');
+          }
+          from = at + kw.length;
+        }
+      }
+    }
+    if (total == 0) return '全书正文中没有找到「$kw」';
+    if (total > cap) buf.writeln('(共 $total 处,只列了前 $cap 处)');
+    return buf.toString().trimRight();
   }
 
   Future<String> _listChapters() async {
@@ -104,7 +184,8 @@ class NovelToolExecutor {
     return buf.toString().trimRight();
   }
 
-  Future<String> _eventContent(Object? chapterNo, Object? eventNo) async {
+  Future<String> _eventContent(Object? chapterNo, Object? eventNo,
+      {bool fromEnd = false}) async {
     final c = chapterNo is int ? chapterNo : int.tryParse('$chapterNo') ?? 0;
     final ev = eventNo is int ? eventNo : int.tryParse('$eventNo') ?? 0;
     final chapters = await db.watchChapters(novelId).first;
@@ -121,8 +202,12 @@ class NovelToolExecutor {
     const cap = 4000;
     final body = content.length <= cap
         ? content
-        : '${content.substring(0, cap)}\n…(已截断,全文共 ${content.length} 字)';
-    return '第 $c 章《${chapters[c - 1].title}》小节 $ev「${e.name}」\n大纲:${e.outline}\n正文:\n$body';
+        : fromEnd
+            ? '…(前 ${content.length - cap} 字略,以下是结尾)\n${content.substring(content.length - cap)}'
+            : '${content.substring(0, cap)}\n…(已截断,全文共 ${content.length} 字;'
+                '要读结尾改传 from_end:true)';
+    return '第 $c 章《${chapters[c - 1].title}》小节 $ev「${e.name}」'
+        '(正文 ${content.length} 字)\n大纲:${e.outline}\n正文:\n$body';
   }
 
   Future<String> _entryDetail(String name) async {
@@ -176,9 +261,13 @@ class NovelToolExecutor {
 
   Future<String> _listEntries(String? kindName) async {
     final all = await db.allEntriesOf(novelId);
-    final kinds = kindName == null
-        ? EntryKind.values
-        : [EntryKind.values.byName(kindName)];
+    final one = kindName == null
+        ? null
+        : EntryKind.values.asNameMap()[kindName.trim()];
+    if (kindName != null && one == null) {
+      return '失败:kind 无效,可选:${EntryKind.values.map((k) => k.name).join('、')}';
+    }
+    final kinds = one == null ? EntryKind.values : [one];
     final buf = StringBuffer();
     for (final kind in kinds) {
       final names = [

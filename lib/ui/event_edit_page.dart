@@ -90,6 +90,9 @@ class _ChatMsg {
 
   /// null=待处理,true=已接受,false=已拒绝
   bool? reviewed;
+
+  /// offer_candidates 卡上作者已采用的候选下标
+  int? chosen;
 }
 
 class _EventEditPageState extends State<EventEditPage>
@@ -123,6 +126,17 @@ class _EventEditPageState extends State<EventEditPage>
   bool _stopRequested = false;
   Offset _lastTapPos = Offset.zero;
 
+  /// 会话开始时的 system 快照(大纲/小节名/情节/挂载设定)。
+  /// system 静态化是为了前缀缓存,代价是作者中途改动模型看不见——
+  /// 每轮与当前事实比对,有变化就把增量补进 user 消息
+  ({String outline, String name, String plots, String styles})? _sessionFacts;
+
+  /// agent 最后见到的正文版本;与编辑框不一致说明作者手改过
+  String _agentSeenText = '';
+
+  /// 恢复历史会话时 system 是旧快照,恢复后首轮要一次性校准事实
+  bool _needsFactRefresh = false;
+
   /// 最近一次非空选区(web 上点按钮会失焦丢选区,用它兑底)
   TextSelection? _pinnedSel;
   String _pinnedText = '';
@@ -155,12 +169,18 @@ class _EventEditPageState extends State<EventEditPage>
     'read_outline': '读取大纲',
     'set_outline': '更新大纲',
     'set_highlight': '高亮标记',
+    'check_prose': '正文体检',
+    'offer_candidates': '候选版本',
     'upsert_entry': '更新设定',
     'delete_entry': '删除设定',
     'upsert_set': '更新设定集',
     'delete_set': '删除设定集',
     'get_entry_detail': '查阅设定',
     'list_entries': '列出条目',
+    'get_kind_template': '查阅字段模板',
+    'list_chapters': '查阅目录',
+    'get_event_content': '读取其他小节',
+    'search_content': '检索全书正文',
   };
 
   PageSnapshot _ctxProvider() => PageSnapshot(
@@ -174,6 +194,7 @@ class _EventEditPageState extends State<EventEditPage>
     super.initState();
     AppContextRegistry.push(_ctxProvider);
     _contentCtrl.addListener(_trackSel);
+    _agentSeenText = _contentCtrl.text;
     _restoreChat();
     _loadPlots();
   }
@@ -344,6 +365,8 @@ class _EventEditPageState extends State<EventEditPage>
           if (m is Map) m.cast<String, dynamic>()
       ]);
     }
+    // 存档里的 system 是当时的事实,恢复后先校准一轮
+    if (_messages.isNotEmpty) _needsFactRefresh = true;
     final ui = data['ui'];
     if (ui is List) {
       for (final m in ui) {
@@ -362,7 +385,9 @@ class _EventEditPageState extends State<EventEditPage>
                   ? (m['args'] as Map).cast<String, dynamic>()
                   : null,
               toolResult: m['result']?.toString(),
-            )..reviewed = m['reviewed'] is bool ? m['reviewed'] as bool : true);
+            )
+              ..reviewed = m['reviewed'] is bool ? m['reviewed'] as bool : true
+              ..chosen = m['chosen'] is int ? m['chosen'] as int : null);
           case 'change':
             _chatUi.add(_ChatMsg.change(text, null)
               ..reviewed = m['reviewed'] is bool ? m['reviewed'] as bool : true);
@@ -391,6 +416,7 @@ class _EventEditPageState extends State<EventEditPage>
               if (m.isTool && m.toolArgs != null) 'args': m.toolArgs,
               if (m.isTool && m.toolResult != null) 'result': m.toolResult,
               if (m.isTool && m.reviewed != null) 'reviewed': m.reviewed,
+              if (m.isTool && m.chosen != null) 'chosen': m.chosen,
             }
         ],
       };
@@ -443,15 +469,63 @@ class _EventEditPageState extends State<EventEditPage>
           if (e.outline.trim().isNotEmpty) e.outline.trim()
       ];
 
-  /// 前一个小节正文的结尾(衔接文风用)
+  /// 前一个小节正文的结尾(衔接文风用)。system 只建一次,给足语感样本
   String get _prevTail {
     for (final e in widget.priorEvents.reversed) {
       final c = e.content.trim();
       if (c.isNotEmpty) {
-        return c.length <= 300 ? c : c.substring(c.length - 300);
+        return c.length <= 1200 ? c : c.substring(c.length - 1200);
       }
     }
     return '';
+  }
+
+  /// 当前事实快照:用于每轮检测作者中途改了什么
+  Future<({String outline, String name, String plots, String styles})>
+  _currentFacts() async {
+    final novel = await widget.db.novelById(widget.novel.id) ?? widget.novel;
+    final all = await widget.db.allEntriesOf(widget.novel.id);
+    final sets = await widget.db.setsOf(widget.novel.id);
+    final ids = _resolveMountTokens(novel.styleEntryIds, sets);
+    return (
+      outline: _outlineCtrl.text,
+      name: _nameCtrl.text,
+      plots: [for (final p in _plots) '${p.name}:${p.description}'].join('\n'),
+      styles: [
+        for (final e in all)
+          if (ids.contains(e.id) && e.kind == EntryKind.lore.name)
+            '■ ${e.name}\n${styleEntryFullText(e)}',
+      ].join('\n\n'),
+    );
+  }
+
+  /// 与快照比对,产出需要补发给模型的变更说明
+  String _factsDelta(
+    ({String outline, String name, String plots, String styles}) now,
+  ) {
+    final was = _sessionFacts;
+    _sessionFacts = now;
+    if (was == null) return '';
+    final parts = <String>[];
+    if (now.name != was.name) {
+      parts.add('小节名改为「${now.name.trim().isEmpty ? '未命名' : now.name.trim()}」');
+    }
+    if (now.outline != was.outline) {
+      parts.add(
+        '本节大纲已被作者改为:\n'
+        '${now.outline.trim().isEmpty ? '(清空——不再有大纲约束)' : now.outline.trim()}',
+      );
+    }
+    if (now.plots != was.plots) {
+      parts.add('本节情节编排已更新为:\n${now.plots.isEmpty ? '(清空)' : now.plots}');
+    }
+    if (now.styles != was.styles) {
+      parts.add(
+        '挂载设定(最高优先级要求)已更新,以下为最新全文,以此为准:\n'
+        '${now.styles.isEmpty ? '(已清空,不再有常驻设定)' : now.styles}',
+      );
+    }
+    return parts.join('\n');
   }
 
   /// 解析挂载令牌为卡片 id 集合(set:{id} 展开为集内全部卡)
@@ -504,6 +578,15 @@ class _EventEditPageState extends State<EventEditPage>
         styleEntries: styles,
       ),
     });
+    _sessionFacts = (
+      outline: _outlineCtrl.text,
+      name: _nameCtrl.text,
+      plots: [for (final p in _plots) '${p.name}:${p.description}'].join('\n'),
+      styles: [
+        for (final e in styles) '■ ${e.name}\n${styleEntryFullText(e)}'
+      ].join('\n\n'),
+    );
+    _agentSeenText = _contentCtrl.text;
   }
 
   /// 选择挂载到写作会话的设定卡/设定集(小说级,新对话生效)
@@ -675,9 +758,18 @@ class _EventEditPageState extends State<EventEditPage>
   /// 阈值放宽以减少前缀缓存(KV cache)失效;切割点对齐到 user 消息,
   /// 避免 assistant(tool_calls) 与 tool 结果被拆散导致请求非法
   Future<void> _maybeCompress(LlmSettings settings) async {
-    final histSize = _messages
-        .skip(1)
-        .fold<int>(0, (s, m) => s + (m['content']?.toString().length ?? 0));
+    // 计入 tool_calls 里的参数:续写/替换的新文字全在那里,漏算会压缩过晚
+    final histSize = _messages.skip(1).fold<int>(0, (s, m) {
+      var n = m['content']?.toString().length ?? 0;
+      final tcs = m['tool_calls'];
+      if (tcs is List) {
+        for (final tc in tcs) {
+          final fn = tc is Map ? tc['function'] : null;
+          if (fn is Map) n += fn['arguments']?.toString().length ?? 0;
+        }
+      }
+      return s + n;
+    });
     if (histSize < 60000 || _messages.length < 16) return;
     // 从后往前数第 4 条 user 消息作为保留区起点
     var keep = -1;
@@ -694,22 +786,48 @@ class _EventEditPageState extends State<EventEditPage>
     if (keep <= 1) return;
     final old = _messages.sublist(1, keep);
     final text = [
-      for (final m in old)
-        if (m['content'] != null && (m['role'] == 'user' || m['role'] == 'assistant'))
-          '${m['role']}: ${m['content']}'
-    ].join('\n');
+      for (final m in old) _renderForSummary(m)
+    ].where((s) => s.isNotEmpty).join('\n');
     try {
       final summary = await LlmClient.chat(settings,
           system: compressChatSystem, user: text);
       _messages.removeRange(1, keep);
-      _messages.insert(1, {
-        'role': 'user',
-        'content': '【此前对话备忘】\n$summary',
-      });
+      final memo = '【此前对话备忘】\n$summary';
+      // 切割点本身就是 user 消息,直接并入,避免连续两条 user 消息(部分服务会拒)
+      if (_messages.length > 1 && _messages[1]['role'] == 'user') {
+        _messages[1] = {
+          'role': 'user',
+          'content': '$memo\n\n${_messages[1]['content'] ?? ''}',
+        };
+      } else {
+        _messages.insert(1, {'role': 'user', 'content': memo});
+      }
     } catch (_) {
       // 压缩失败不阻断对话
     }
   }
+
+  /// 压缩前的可读化:正文写在工具参数里,只收 content 会把稿子整段丢掉
+  String _renderForSummary(Map<String, dynamic> m) {
+    final role = m['role']?.toString() ?? '';
+    final buf = StringBuffer();
+    final content = m['content']?.toString().trim() ?? '';
+    if (content.isNotEmpty) buf.writeln('$role: $content');
+    final tcs = m['tool_calls'];
+    if (tcs is List) {
+      for (final tc in tcs) {
+        final fn = tc is Map ? tc['function'] : null;
+        if (fn is! Map) continue;
+        final name = fn['name']?.toString() ?? '';
+        final args = fn['arguments']?.toString() ?? '';
+        buf.writeln('$role[工具 $name]: ${_clip(args, 600)}');
+      }
+    }
+    return buf.toString().trimRight();
+  }
+
+  static String _clip(String s, int max) =>
+      s.length <= max ? s : '${s.substring(0, max)}…(略)';
 
   Future<void> _send() async {
     final text = _chatCtrl.text.trim();
@@ -763,20 +881,43 @@ class _EventEditPageState extends State<EventEditPage>
     try {
       final settings = await SettingsStore.loadFor(LlmPurpose.writing);
       // system 保持静态(仅新会话构建一次),前缀缓存友好;
-      // 设定时效性由 agent 用检索工具自行保证
+      // 代价是作者中途改的大纲/文风/情节模型看不见,故每轮把增量补进 user 消息
       if (_messages.isEmpty) {
         await _initSession();
+      }
+      final facts = await _currentFacts();
+      var delta = _factsDelta(facts);
+      if (_needsFactRefresh) {
+        _needsFactRefresh = false;
+        final head = delta.isEmpty ? '' : '$delta\n';
+        delta = '${head}会话恢复后的当前事实:小节名'
+            '「${facts.name.trim().isEmpty ? '未命名' : facts.name.trim()}」;'
+            '本节大纲:${facts.outline.trim().isEmpty ? '(空)' : facts.outline.trim()};'
+            '本节情节编排:${facts.plots.isEmpty ? '(空)' : facts.plots}'
+            '${facts.styles.isEmpty ? '' : '\n挂载设定(最高优先级):\n${facts.styles}'}';
+      }
+      if (delta.isNotEmpty) {
+        fullText = '$fullText\n\n【状态更新(以这里为准)】\n$delta';
+      }
+      if (_contentCtrl.text != _agentSeenText) {
+        fullText = '$fullText\n\n【注意】正文在你上次看到之后被手动改过'
+            '(现 ${_contentCtrl.text.trim().length} 字,你上次见到的是 ${_agentSeenText.trim().length} 字);'
+            '任何改动前先 read_content 重新读一遍';
       }
       await _maybeCompress(settings);
       _messages.add({'role': 'user', 'content': fullText});
       final executor = WritingToolExecutor(
-        readContent: () => _contentCtrl.text,
+        readContent: () {
+          _agentSeenText = _contentCtrl.text;
+          return _agentSeenText;
+        },
         writeContent: (v) {
           if (!mounted) return;
           setState(() {
             _contentCtrl.text = v;
             _dirty = true;
           });
+          _agentSeenText = v;
         },
         readOutline: () => _outlineCtrl.text,
         writeOutline: (v) {
@@ -792,17 +933,16 @@ class _EventEditPageState extends State<EventEditPage>
             return '已清除高亮';
           }
           final c = _contentCtrl.text;
-          final n = frag.allMatches(c).length;
-          if (n == 0) return '失败:正文中未找到该片段,请先 read_content 核对';
-          if (n > 1) return '失败:该片段出现 $n 处,请给更长的唯一片段';
-          final idx = c.indexOf(frag);
+          final m = locateFragment(c, frag);
+          if (!m.found) return m.failure!;
+          final idx = m.start!;
           if (mounted) {
             setState(
-                () => _contentCtrl.setHighlight(idx, idx + frag.length));
+                () => _contentCtrl.setHighlight(idx, m.end!));
             if (_tab.index != 0) _toast('已在编辑页高亮标记');
           }
           final line = '\n'.allMatches(c.substring(0, idx)).length + 1;
-          return '已高亮第 $line 行起的 ${frag.length} 字';
+          return '已高亮第 $line 行起的 ${m.end! - idx} 字';
         },
         readHighlight: () {
           final h = _contentCtrl.highlight;
@@ -1040,12 +1180,9 @@ class _EventEditPageState extends State<EventEditPage>
           },
         );
       } on ToolsUnsupportedException {
-        reply = await LlmClient.chatTurn(
-          settings,
-          messages: _messages,
-          tools: allTools,
-          onToolCall: loggedCall,
-        );
+        // 写作 agent 的一切动作都靠工具;没有 function calling 只会"只聊天不动手"
+        throw LlmException('当前模型不支持工具调用(function calling),写作 agent 无法改动正文。'
+            '请在设置里换成支持工具调用的模型(DeepSeek / Kimi / 智谱 / GPT 系等)');
       }
       if (!mounted) return;
       setState(() {
@@ -1648,6 +1785,7 @@ class _EventEditPageState extends State<EventEditPage>
       );
     }
     final name = m.toolName!;
+    if (name == 'offer_candidates') return _candidateCard(context, m);
     final args = m.toolArgs ?? const {};
     final result = m.toolResult;
     final running = result == null;
@@ -1735,6 +1873,155 @@ class _EventEditPageState extends State<EventEditPage>
         ),
       ),
     );
+  }
+
+  /// 候选卡:出 2~3 版让作者挑一版落地。
+  /// 依据:散文质量主要来自"多版对比择优",模型自我批评对长文基本无效
+  Widget _candidateCard(BuildContext context, _ChatMsg m) {
+    final scheme = Theme.of(context).colorScheme;
+    final args = m.toolArgs ?? const {};
+    final mode = args['mode']?.toString() ?? 'append';
+    final anchor = args['anchor']?.toString() ?? '';
+    final items = <({String label, String text})>[
+      for (final c in (args['candidates'] as List? ?? const []))
+        if (c is Map)
+          (
+            label: c['label']?.toString().trim() ?? '候选',
+            text: c['text']?.toString().trim() ?? '',
+          ),
+    ].where((c) => c.text.isNotEmpty).toList();
+    final chosen = m.chosen;
+    final failed = m.toolResult?.startsWith('失败') ?? false;
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome, size: 14, color: scheme.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  mode == 'replace'
+                      ? '候选版本 · 替换「${_clip(anchor.replaceAll('\n', ' '), 20)}」那段'
+                      : '候选版本 · 续写',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: scheme.primary),
+                ),
+              ),
+              if (chosen != null)
+                Text(
+                  '已采用版本 ${chosen + 1}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(color: scheme.primary),
+                ),
+            ],
+          ),
+          if (failed) ...[
+            const SizedBox(height: 6),
+            Text(
+              m.toolResult!,
+              style: TextStyle(fontSize: 12, color: scheme.error),
+            ),
+          ],
+          const SizedBox(height: 8),
+          for (final (i, c) in items.indexed)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: chosen == i
+                    ? scheme.primaryContainer.withValues(alpha: 0.55)
+                    : scheme.surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: chosen == i ? scheme.primary : scheme.outlineVariant,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '版本 ${i + 1} · ${c.label}',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    child: SingleChildScrollView(
+                      child: SelectableText(
+                        c.text,
+                        style: const TextStyle(fontSize: 13, height: 1.6),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      FilledButton.tonal(
+                        onPressed: chosen != null
+                            ? null
+                            : () => _applyCandidate(m, i, mode, anchor, c.text),
+                        child: Text(chosen == i ? '已采用' : '用这段'),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${proseWordCount(c.text)} 字',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.labelSmall?.copyWith(color: scheme.outline),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 采用某个候选:续写追加 / 替换锚点段;作者手选,可直接回退
+  void _applyCandidate(
+    _ChatMsg m,
+    int index,
+    String mode,
+    String anchor,
+    String text,
+  ) {
+    final before = (outline: _outlineCtrl.text, content: _contentCtrl.text);
+    var next = _contentCtrl.text;
+    if (mode == 'replace') {
+      final match = locateFragment(next, anchor);
+      if (!match.found) {
+        _toast('原文已变,这版没法落地:${match.failure}', error: true);
+        return;
+      }
+      next = next.replaceRange(match.start!, match.end!, text);
+    } else {
+      next = next.trim().isEmpty ? text : '${next.trimRight()}\n\n$text';
+    }
+    setState(() {
+      _contentCtrl.text = next;
+      _dirty = true;
+      m.chosen = index;
+    });
+    _agentSeenText = next;
+    _history.add(before);
+    if (_history.length > 20) _history.removeAt(0);
+    _toast('已采用版本 ${index + 1}(${proseWordCount(text)} 字)');
+    _persistChat();
   }
 
   List<Widget> _toolDetail(BuildContext context, String name,
@@ -1839,27 +2126,49 @@ class _EventEditPageState extends State<EventEditPage>
           for (final o in ops)
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      _toolSummary(o),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.outline,
-                          decoration: o.reviewed == false
-                              ? TextDecoration.lineThrough
-                              : null),
+                    child: InkWell(
+                      onTap: () => setState(() => o.expanded = !o.expanded),
+                      child: Text(
+                        _toolSummary(o),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.outline,
+                            decoration: o.reviewed == false
+                                ? TextDecoration.lineThrough
+                                : null),
+                      ),
                     ),
+                  ),
+                  InkWell(
+                    onTap: () => setState(() => o.expanded = !o.expanded),
+                    child: Icon(
+                        o.expanded ? Icons.expand_less : Icons.expand_more,
+                        size: 14,
+                        color: scheme.outline),
                   ),
                   if (o.reviewed == null) ...[
                     InkWell(
                       onTap: () async {
+                        final snapshot = (
+                          outline: _outlineCtrl.text,
+                          content: _contentCtrl.text
+                        );
                         final err = await o.revert!();
                         if (!mounted) return;
                         if (err != null) {
                           _toast(err, error: true);
                         } else {
-                          setState(() => o.reviewed = false);
+                          setState(() {
+                            o.reviewed = false;
+                            // 拒绝也是一次改动:压栈后可用「回退上一版」撤销
+                            _history.add(snapshot);
+                            if (_history.length > 20) _history.removeAt(0);
+                          });
                           await _persistChat();
                         }
                       },
@@ -1885,6 +2194,13 @@ class _EventEditPageState extends State<EventEditPage>
                   ] else if (o.reviewed == false)
                     Text('已回退',
                         style: TextStyle(fontSize: 12, color: scheme.error)),
+                ],
+                  ),
+                  if (o.expanded) ...[
+                    const SizedBox(height: 4),
+                    ..._toolDetail(
+                        context, o.toolName ?? '', o.toolArgs ?? const {}, null),
+                  ],
                 ],
               ),
             ),
