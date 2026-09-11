@@ -890,7 +890,7 @@ class _EventEditPageState extends State<EventEditPage>
       if (_needsFactRefresh) {
         _needsFactRefresh = false;
         final head = delta.isEmpty ? '' : '$delta\n';
-        delta = '${head}会话恢复后的当前事实:小节名'
+        delta = '$head会话恢复后的当前事实:小节名'
             '「${facts.name.trim().isEmpty ? '未命名' : facts.name.trim()}」;'
             '本节大纲:${facts.outline.trim().isEmpty ? '(空)' : facts.outline.trim()};'
             '本节情节编排:${facts.plots.isEmpty ? '(空)' : facts.plots}'

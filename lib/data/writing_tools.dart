@@ -696,7 +696,7 @@ class WritingToolExecutor {
   String _withEscape(String failure) {
     _locateFailures++;
     if (_locateFailures < 2) return failure;
-    return '$failure\n(本段已连续 ${_locateFailures} 次定位失败:先 read_content 看准原文;'
+    return '$failure\n(本段已连续 $_locateFailures 次定位失败:先 read_content 看准原文;'
         '确实要整段推翻时用 set_content 并在 reason 里写明理由)';
   }
 
